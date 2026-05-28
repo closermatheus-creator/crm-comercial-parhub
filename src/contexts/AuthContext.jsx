@@ -99,21 +99,28 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let timeout = setTimeout(() => {
       setLoading(false)
-    }, 5000)
+    }, 10000)
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      clearTimeout(timeout)
-      if (session?.user) {
-        const userData = await configurarUsuario(session.user)
-        setUser(userData)
+    // Tentar recuperar sessão imediatamente
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        clearTimeout(timeout)
+        if (session?.user) {
+          const userData = await configurarUsuario(session.user)
+          setUser(userData)
+        }
+      } catch (err) {
+        console.error('Erro ao recuperar sessão:', err)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
-    }).catch(() => {
-      clearTimeout(timeout)
-      setLoading(false)
-    })
+    }
+
+    initAuth()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      clearTimeout(timeout)
       if (session?.user) {
         const userData = await configurarUsuario(session.user)
         setUser(userData)
