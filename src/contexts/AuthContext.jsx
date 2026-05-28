@@ -123,10 +123,6 @@ export function AuthProvider({ children }) {
       provider: 'google',
       options: {
         redirectTo: window.location.origin + '/overview'
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        }
       }
     })
   }
