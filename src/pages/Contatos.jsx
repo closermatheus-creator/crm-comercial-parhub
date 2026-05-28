@@ -94,8 +94,7 @@ export default function Contatos() {
           <p className="text-sm text-[var(--text-secondary)] mt-1">{loading ? 'Carregando...' : `${contatosFiltrados.length} de ${contatos.length} contatos`}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setShowNovo(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-brand-500/30 text-brand-500 hover:bg-brand-500/10 transition-all text-sm"><Plus size={16} /> Novo Contato</button>
-          <input ref={fileInputRef} type="file" accept=".csv" onChange={() => {}} className="hidden" id="csv-upload" />
+          <button onClick={() => setShowNovo(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"><Plus size={16} /> Novo Contato</button>          <input ref={fileInputRef} type="file" accept=".csv" onChange={() => {}} className="hidden" id="csv-upload" />
           <label htmlFor="csv-upload" className="btn-primary flex items-center gap-2 text-sm cursor-pointer"><Upload size={16} /> Importar CSV</label>
         </div>
       </div>
