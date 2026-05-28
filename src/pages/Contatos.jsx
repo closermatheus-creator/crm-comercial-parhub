@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, Instagram, Linkedin, Mail, X } from 'lucide-react'
+import { Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, Instagram, Linkedin, Mail, History, ChevronRight, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
@@ -23,12 +23,26 @@ export default function Contatos() {
   const [statusFilter, setStatusFilter] = useState('nao_abordado')
   const [selectedContato, setSelectedContato] = useState(null)
   const [showNovo, setShowNovo] = useState(false)
+  const [showPainel, setShowPainel] = useState(false)
   const [importando, setImportando] = useState(false)
   const [novoContato, setNovoContato] = useState({ nome: '', telefone: '', email: '', empresa: '', instagram: '', linkedin: '', faturamento: '', nicho: '', tempoMercado: '' })
   const [salvando, setSalvando] = useState(false)
+  const [atividades, setAtividades] = useState([])
+  const [carregandoAtividades, setCarregandoAtividades] = useState(false)
   const fileInputRef = useRef(null)
 
   useEffect(() => { carregarContatos() }, [user])
+
+  const carregarAtividades = async (contatoId) => {
+    setCarregandoAtividades(true)
+    const { data } = await supabase
+      .from('atividades')
+      .select('*')
+      .eq('contato_id', contatoId)
+      .order('criado_em', { ascending: false })
+    setAtividades(data || [])
+    setCarregandoAtividades(false)
+  }
 
   const carregarContatos = async () => {
     if (!user?.equipeId) return
@@ -40,12 +54,30 @@ export default function Contatos() {
   }
 
   const atualizarStatus = async (id, novoStatus) => {
-    const { data: contato } = await supabase.from('contatos').select('status_por_usuario').eq('id', id).single()
+    const { data: contato } = await supabase.from('contatos').select('status_por_usuario,nome').eq('id', id).single()
     const statusAtual = contato?.status_por_usuario || {}
+    const statusAntigo = statusAtual[user.uid] || 'nao_abordado'
     statusAtual[user.uid] = novoStatus
     await supabase.from('contatos').update({ status_por_usuario: statusAtual, ultimo_contato: new Date() }).eq('id', id)
+    
+    // Registrar atividade
+    await supabase.from('atividades').insert({
+      contato_id: id,
+      contato_nome: contato?.nome,
+      equipe_id: user.equipeId,
+      tipo: 'status',
+      descricao: `Status alterado de "${statusAntigo}" para "${novoStatus}"`,
+      status_anterior: statusAntigo,
+      status_novo: novoStatus,
+      criado_por: user.uid,
+      criado_em: new Date()
+    })
+    
     setContatos(prev => prev.map(c => c.id === id ? { ...c, status: novoStatus } : c))
-    if (selectedContato?.id === id) setSelectedContato(prev => ({ ...prev, status: novoStatus }))
+    if (selectedContato?.id === id) {
+      setSelectedContato(prev => ({ ...prev, status: novoStatus }))
+      carregarAtividades(id)
+    }
     toast.success('Status atualizado!')
   }
 
@@ -70,6 +102,21 @@ export default function Contatos() {
       data_criacao: new Date().toISOString()
     })
     if (error) { toast.error('Erro ao salvar'); setSalvando(false); return }
+
+    // Registrar atividade de criação
+    const { data: novo } = await supabase.from('contatos').select('id').eq('equipe_id', user.equipeId).order('data_criacao', { ascending: false }).limit(1).single()
+    if (novo) {
+      await supabase.from('atividades').insert({
+        contato_id: novo.id,
+        contato_nome: novoContato.nome.trim(),
+        equipe_id: user.equipeId,
+        tipo: 'criacao',
+        descricao: 'Contato criado',
+        criado_por: user.uid,
+        criado_em: new Date()
+      })
+    }
+
     toast.success('Contato adicionado!')
     setNovoContato({ nome: '', telefone: '', email: '', empresa: '', instagram: '', linkedin: '', faturamento: '', nicho: '', tempoMercado: '' })
     setShowNovo(false)
@@ -94,7 +141,8 @@ export default function Contatos() {
           <p className="text-sm text-[var(--text-secondary)] mt-1">{loading ? 'Carregando...' : `${contatosFiltrados.length} de ${contatos.length} contatos`}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setShowNovo(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"><Plus size={16} /> Novo Contato</button>          <input ref={fileInputRef} type="file" accept=".csv" onChange={() => {}} className="hidden" id="csv-upload" />
+          <button onClick={() => setShowNovo(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"><Plus size={16} /> Novo Contato</button>
+          <input ref={fileInputRef} type="file" accept=".csv" onChange={() => {}} className="hidden" id="csv-upload" />
           <label htmlFor="csv-upload" className="btn-primary flex items-center gap-2 text-sm cursor-pointer"><Upload size={16} /> Importar CSV</label>
         </div>
       </div>
@@ -150,7 +198,7 @@ export default function Contatos() {
               <tbody>
                 {contatosFiltrados.map(c => (
                   <tr key={c.id} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-tertiary)]/50">
-                    <td className="p-3"><button onClick={() => setSelectedContato(c)} className="text-left hover:text-brand-500 text-sm font-medium">{c.nome}</button></td>
+                    <td className="p-3"><button onClick={() => { setSelectedContato(c); setShowPainel(true); carregarAtividades(c.id) }} className="text-left hover:text-brand-500 text-sm font-medium">{c.nome}</button></td>
                     <td className="p-3 text-sm font-mono">{c.telefone ? formatPhone(c.telefone) : '-'}</td>
                     <td className="p-3 text-xs">{c.email || '-'}</td>
                     <td className="p-3 text-xs">{c.empresa || '-'}</td>
@@ -164,6 +212,47 @@ export default function Contatos() {
           </div>
         )}
       </div>
+
+      {/* Painel lateral de atividades */}
+      {showPainel && selectedContato && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/60" onClick={() => { setShowPainel(false); setSelectedContato(null) }} />
+          <div className="relative bg-[var(--bg-secondary)] border-l border-[var(--border-color)] w-full max-w-md shadow-2xl z-10 h-full overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedContato.nome}</h2>
+                <button onClick={() => { setShowPainel(false); setSelectedContato(null) }} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]"><X size={20} /></button>
+              </div>
+              
+              <div className="space-y-3 mb-6">
+                {selectedContato.telefone && <p className="text-sm text-[var(--text-secondary)]"><Phone size={14} className="inline mr-2" />{formatPhone(selectedContato.telefone)}</p>}
+                {selectedContato.email && <p className="text-sm text-[var(--text-secondary)]"><Mail size={14} className="inline mr-2" />{selectedContato.email}</p>}
+                {selectedContato.empresa && <p className="text-sm text-[var(--text-secondary)]"><Building2 size={14} className="inline mr-2" />{selectedContato.empresa}</p>}
+              </div>
+
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2"><History size={16} /> Histórico de Atividades</h3>
+              
+              {carregandoAtividades ? (
+                <div className="text-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" /></div>
+              ) : atividades.length === 0 ? (
+                <p className="text-sm text-[var(--text-secondary)] text-center py-8">Nenhuma atividade registrada</p>
+              ) : (
+                <div className="space-y-3">
+                  {atividades.map(a => (
+                    <div key={a.id} className="flex gap-3 p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                      <div className="w-2 h-2 rounded-full bg-brand-500 mt-1.5 shrink-0" />
+                      <div>
+                        <p className="text-sm text-[var(--text-primary)]">{a.descricao}</p>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1">{new Date(a.criado_em).toLocaleString('pt-BR')}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
