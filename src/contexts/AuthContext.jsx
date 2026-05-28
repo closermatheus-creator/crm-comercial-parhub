@@ -7,133 +7,40 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  const configurarUsuario = async (authUser) => {
-    try {
-      // Buscar na tabela clientes (nova estrutura comercial)
-      const { data: clienteExiste } = await supabase
-        .from('clientes')
-        .select('*')
-        .eq('id', authUser.id)
-        .single()
-
-      let equipeId = null
-
-      if (!clienteExiste) {
-        // PRIMEIRO LOGIN: Criar equipe e cliente
-        const novoEquipeId = crypto.randomUUID()
-        
-        await supabase.from('equipes').insert({
-          id: novoEquipeId,
-          nome: authUser.user_metadata?.full_name || 'Minha Empresa',
-          membros: [authUser.id],
-          criado_por: authUser.id,
-          ativo: true,
-          plano: 'essencial',
-          logo_url: null,
-          cor_primaria: '#a855f7',
-          nome_sistema: 'PARHUB CRM',
-          campos_personalizados: []
-        })
-
-        await supabase.from('clientes').insert({
-          id: authUser.id,
-          nome: authUser.user_metadata?.full_name || authUser.email,
-          email: authUser.email,
-          foto: authUser.user_metadata?.avatar_url,
-          equipe_id: novoEquipeId,
-          role: 'admin',
-          criado_em: new Date()
-        })
-
-        equipeId = novoEquipeId
-      } else {
-        equipeId = clienteExiste.equipe_id
-
-        if (!equipeId) {
-          const novoEquipeId = crypto.randomUUID()
-          await supabase.from('equipes').insert({
-            id: novoEquipeId,
-            nome: authUser.user_metadata?.full_name || 'Minha Empresa',
-            membros: [authUser.id],
-            criado_por: authUser.id,
-            ativo: true,
-            plano: 'essencial',
-            logo_url: null,
-            cor_primaria: '#a855f7',
-            nome_sistema: 'PARHUB CRM',
-            campos_personalizados: []
-          })
-          await supabase.from('clientes').update({ equipe_id: novoEquipeId }).eq('id', authUser.id)
-          equipeId = novoEquipeId
-        }
-      }
-
-      // Buscar dados da equipe para personalização
-      const { data: equipeData } = await supabase
-        .from('equipes')
-        .select('*')
-        .eq('id', equipeId)
-        .single()
-
-      return {
-        uid: authUser.id,
-        nome: authUser.user_metadata?.full_name || authUser.email,
-        email: authUser.email,
-        foto: authUser.user_metadata?.avatar_url,
-        equipeId: equipeId,
-        equipe: equipeData
-      }
-    } catch (error) {
-      console.error('Erro ao configurar usuário:', error)
-      return {
-        uid: authUser.id,
-        nome: authUser.user_metadata?.full_name,
-        email: authUser.email,
-        foto: authUser.user_metadata?.avatar_url,
-        equipeId: null,
-        equipe: null
-      }
-    }
-  }
-
   useEffect(() => {
-    let timeout = setTimeout(() => {
-      setLoading(false)
-    }, 10000)
-
-    // Tentar recuperar sessão imediatamente
-    const initAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        clearTimeout(timeout)
-        if (session?.user) {
-          const userData = await configurarUsuario(session.user)
-          setUser(userData)
-        }
-      } catch (err) {
-        console.error('Erro ao recuperar sessão:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    initAuth()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      clearTimeout(timeout)
+    // Recupera sessão salva
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        const userData = await configurarUsuario(session.user)
-        setUser(userData)
+        setUser({
+          uid: session.user.id,
+          nome: session.user.user_metadata?.full_name || session.user.email,
+          email: session.user.email,
+          foto: session.user.user_metadata?.avatar_url,
+          equipeId: session.user.user_metadata?.equipe_id || null
+        })
+      }
+      setLoading(false)
+    }).catch(() => {
+      setLoading(false)
+    })
+
+    // Escuta mudanças de autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser({
+          uid: session.user.id,
+          nome: session.user.user_metadata?.full_name || session.user.email,
+          email: session.user.email,
+          foto: session.user.user_metadata?.avatar_url,
+          equipeId: session.user.user_metadata?.equipe_id || null
+        })
       } else {
         setUser(null)
       }
       setLoading(false)
     })
 
-    return () => {
-      clearTimeout(timeout)
-      subscription.unsubscribe()
-    }
+    return () => subscription.unsubscribe()
   }, [])
 
   const login = async () => {
