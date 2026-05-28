@@ -14,12 +14,10 @@ export default function Login() {
 
       <div className="card p-8 w-full max-w-md text-center space-y-6">
         <div className="space-y-2">
-          <div className="w-16 h-16 bg-brand-500 rounded-2xl flex items-center justify-center mx-auto">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto" style={{ backgroundColor: '#1E2D53' }}>
             <span className="text-white font-bold text-2xl">P</span>
           </div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">
-            <span className="text-brand-500">PAR</span>HUB
-          </h1>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">PARHUB</h1>
           <p className="text-[var(--text-secondary)] text-sm">CRM Comercial</p>
         </div>
 
@@ -29,7 +27,7 @@ export default function Login() {
           <div className="flex-1 h-px bg-[var(--border-color)]" />
         </div>
 
-        <button onClick={login} className="w-full flex items-center justify-center gap-3 bg-[var(--bg-tertiary)] hover:bg-brand-500/10 text-[var(--text-primary)] font-medium py-3 px-4 rounded-lg transition-all border border-[var(--border-color)]">
+        <button onClick={login} className="w-full flex items-center justify-center gap-3 bg-[var(--bg-tertiary)] hover:bg-opacity-80 text-[var(--text-primary)] font-medium py-3 px-4 rounded-lg transition-all border border-[var(--border-color)]">
           <svg width="20" height="20" viewBox="0 0 24 24">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
             <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -38,10 +36,6 @@ export default function Login() {
           </svg>
           Entrar com Google
         </button>
-
-        <p className="text-xs text-[var(--text-secondary)]">
-          Faça login com sua conta Google para acessar
-        </p>
       </div>
     </div>
   )
