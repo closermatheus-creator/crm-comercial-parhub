@@ -1,32 +1,32 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-    content: [
-      "./index.html",
-      "./src/**/*.{js,ts,jsx,tsx}",
-    ],
-    darkMode: 'class',
-    theme: {
-      extend: {
-        fontFamily: {
-          sans: ['DM Sans', 'sans-serif'],
-          mono: ['DM Mono', 'monospace'],
-        },
-        colors: {
-          brand: {
-            50: '#faf5ff',
-            100: '#f3e8ff',
-            200: '#e9d5ff',
-            300: '#d8b4fe',
-            400: '#c084fc',
-            500: '#a855f7',
-            600: '#9333ea',
-            700: '#7e22ce',
-            800: '#6b21a8',
-            900: '#581c87',
-            950: '#3b0764',
-          }
-        }
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['DM Sans', 'sans-serif'],
+        mono: ['DM Mono', 'monospace'],
       },
+      colors: {
+        brand: {
+          50: '#FBF5EE',
+          100: '#f5ede0',
+          200: '#e8d9c0',
+          300: '#D4B285',
+          400: '#c4a275',
+          500: '#1E2D53',
+          600: '#152040',
+          700: '#0f1830',
+          800: '#0a1020',
+          900: '#050810',
+          950: '#000000',
+        }
+      }
     },
-    plugins: [],
-  }
+  },
+  plugins: [],
+}
