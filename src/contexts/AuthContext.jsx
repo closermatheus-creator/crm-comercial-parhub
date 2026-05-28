@@ -97,11 +97,19 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
+    let timeout = setTimeout(() => {
+      setLoading(false)
+    }, 5000)
+
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      clearTimeout(timeout)
       if (session?.user) {
         const userData = await configurarUsuario(session.user)
         setUser(userData)
       }
+      setLoading(false)
+    }).catch(() => {
+      clearTimeout(timeout)
       setLoading(false)
     })
 
@@ -115,7 +123,10 @@ export function AuthProvider({ children }) {
       setLoading(false)
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      clearTimeout(timeout)
+      subscription.unsubscribe()
+    }
   }, [])
 
   const login = async () => {
