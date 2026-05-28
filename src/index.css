@@ -4,25 +4,25 @@
 
 @layer base {
   :root {
-    --bg-primary: #f8f9fc;
-    --bg-secondary: #ffffff;
-    --bg-tertiary: #f1f3f9;
-    --text-primary: #1a1a2e;
-    --text-secondary: #6b7280;
-    --border-color: rgba(0, 0, 0, 0.06);
+    --bg-primary: #FBF5EE;
+    --bg-secondary: #FFFFFF;
+    --bg-tertiary: #E4E6E7;
+    --text-primary: #000000;
+    --text-secondary: #5c5c5c;
+    --border-color: rgba(0, 0, 0, 0.08);
     --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
     --card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
 
   .dark {
-    --bg-primary: #0a0a0f;
-    --bg-secondary: #111118;
-    --bg-tertiary: #1a1a24;
-    --text-primary: #e8e8ed;
-    --text-secondary: #9ca3af;
-    --border-color: rgba(255, 255, 255, 0.06);
-    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.3);
-    --card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --bg-primary: #1E2D53;
+    --bg-secondary: #152040;
+    --bg-tertiary: #243660;
+    --text-primary: #FBF5EE;
+    --text-secondary: #D4B285;
+    --border-color: rgba(212, 178, 133, 0.15);
+    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   }
 
   * {
@@ -74,13 +74,18 @@
   }
 
   .sidebar-link.active {
-    background-color: rgba(168, 85, 247, 0.1);
-    color: #a855f7;
+    background-color: rgba(30, 45, 83, 0.1);
+    color: #1E2D53;
+  }
+
+  .dark .sidebar-link.active {
+    background-color: rgba(212, 178, 133, 0.15);
+    color: #D4B285;
   }
 
   .btn-primary {
-    background-color: #a855f7;
-    color: white;
+    background-color: #1E2D53;
+    color: #FFFFFF;
     padding: 8px 16px;
     border-radius: 8px;
     font-weight: 500;
@@ -90,7 +95,16 @@
   }
 
   .btn-primary:hover {
-    background-color: #9333ea;
+    background-color: #152040;
+  }
+
+  .dark .btn-primary {
+    background-color: #D4B285;
+    color: #1E2D53;
+  }
+
+  .dark .btn-primary:hover {
+    background-color: #c4a275;
   }
 
   .status-badge {
