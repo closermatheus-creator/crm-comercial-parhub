@@ -14,6 +14,7 @@ const links = [
 export default function Sidebar() {
   const { user } = useAuth()
   const sistemaNome = user?.equipe?.nome_sistema || 'PARHUB'
+  const corPrimaria = user?.equipe?.cor_primaria || '#a855f7'
 
   return (
     <aside className="w-64 h-screen bg-[var(--bg-secondary)] border-r border-[var(--border-color)] flex flex-col fixed left-0 top-0 z-30">
@@ -22,7 +23,7 @@ export default function Sidebar() {
           {user?.equipe?.logo_url ? (
             <img src={user.equipe.logo_url} alt="Logo" className="w-10 h-10 rounded-lg object-cover" />
           ) : (
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: user?.equipe?.cor_primaria || '#1E2D53' }}>
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: corPrimaria }}>
               {sistemaNome.charAt(0)}
             </div>
           )}
@@ -39,6 +40,7 @@ export default function Sidebar() {
             key={to}
             to={to}
             className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+            style={({ isActive }) => isActive ? { backgroundColor: corPrimaria + '20', color: corPrimaria, borderLeftColor: corPrimaria } : {}}
           >
             <Icon size={20} />
             <span>{label}</span>

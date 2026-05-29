@@ -16,13 +16,24 @@ export function AuthProvider({ children }) {
           .eq('id', authUser.id)
           .single()
 
+        let equipe = null
+        if (cliente?.equipe_id) {
+          const { data: eq } = await supabase
+            .from('equipes')
+            .select('*')
+            .eq('id', cliente.equipe_id)
+            .single()
+          equipe = eq
+        }
+
         setUser({
           uid: authUser.id,
           nome: authUser.user_metadata?.full_name || authUser.email,
           email: authUser.email,
           foto: authUser.user_metadata?.avatar_url,
           equipeId: cliente?.equipe_id || null,
-          role: cliente?.role || 'membro'
+          role: cliente?.role || 'membro',
+          equipe: equipe
         })
       } catch (err) {
         console.error('Erro ao carregar usuário:', err)
@@ -32,7 +43,8 @@ export function AuthProvider({ children }) {
           email: authUser.email,
           foto: authUser.user_metadata?.avatar_url,
           equipeId: null,
-          role: 'membro'
+          role: 'membro',
+          equipe: null
         })
       } finally {
         setLoading(false)
