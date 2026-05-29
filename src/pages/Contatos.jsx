@@ -34,6 +34,7 @@ export default function Contatos() {
   const [carregandoAtividades, setCarregandoAtividades] = useState(false)
   const [membrosEquipe, setMembrosEquipe] = useState([])
   const [filtroMembro, setFiltroMembro] = useState('todos')
+  const [importando, setImportando] = useState(false)
   const fileInputRef = useRef(null)
 
   const isAdmin = user?.role === 'admin'
@@ -193,6 +194,154 @@ export default function Contatos() {
     carregarContatos()
   }
 
+  const handleImportarCSV = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.endsWith('.csv')) {
+      toast.error('Por favor, selecione um arquivo .csv')
+      return
+    }
+
+    setImportando(true)
+    const reader = new FileReader()
+
+    reader.onload = async (event) => {
+      try {
+        const texto = event.target.result
+        const linhas = texto.split('\n').filter(l => l.trim())
+        
+        if (linhas.length < 2) {
+          toast.error('O arquivo CSV precisa ter pelo menos cabeçalho + 1 linha de dados')
+          setImportando(false)
+          return
+        }
+
+        // Extrair cabeçalho (primeira linha)
+        const cabecalho = linhas[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
+
+        // Mapear colunas do CSV para campos do banco
+        const mapeamento = {
+          'nome': 'nome',
+          'name': 'nome',
+          'telefone': 'telefone',
+          'phone': 'telefone',
+          'celular': 'telefone',
+          'whatsapp': 'telefone',
+          'email': 'email',
+          'e-mail': 'email',
+          'empresa': 'empresa',
+          'company': 'empresa',
+          'instagram': 'instagram',
+          'linkedin': 'linkedin',
+          'faturamento': 'faturamento',
+          'nicho': 'nicho',
+          'tempo_mercado': 'tempoMercado',
+          'tempo de mercado': 'tempoMercado',
+          'tag': 'tag',
+          'status': 'status',
+          'observacoes': 'observacoes'
+        }
+
+        const contatosInserir = []
+        const erros = []
+
+        for (let i = 1; i < linhas.length; i++) {
+          const valores = linhas[i].split(',').map(v => v.trim().replace(/"/g, ''))
+          
+          if (valores.length === 0 || (valores.length === 1 && !valores[0])) continue
+
+          const contato = {
+            equipe_id: user.equipeId,
+            criado_por: user.uid,
+            status_por_usuario: {},
+            data_criacao: new Date().toISOString(),
+            tag: 'csv_import',
+            status: 'nao_abordado',
+            dados_extras: {}
+          }
+
+          cabecalho.forEach((col, index) => {
+            const valor = valores[index] || ''
+            const campo = mapeamento[col]
+
+            if (campo && valor) {
+              if (['nome', 'telefone', 'email', 'empresa', 'instagram', 'linkedin', 'faturamento', 'nicho'].includes(campo)) {
+                contato[campo] = valor
+              } else if (campo === 'tempoMercado') {
+                contato.tempo_mercado = valor
+              } else if (campo === 'tag') {
+                contato.tag = valor
+              } else if (campo === 'status') {
+                const statusValido = statusOptions.find(s => s.value === valor.toLowerCase() || s.label.toLowerCase() === valor.toLowerCase())
+                contato.status = statusValido ? statusValido.value : 'nao_abordado'
+              } else {
+                contato.dados_extras[col] = valor
+              }
+            }
+          })
+
+          if (!contato.nome || !contato.nome.trim()) {
+            erros.push(`Linha ${i + 1}: nome é obrigatório`)
+            continue
+          }
+
+          contatosInserir.push(contato)
+        }
+
+        if (contatosInserir.length === 0) {
+          toast.error('Nenhum contato válido encontrado no arquivo')
+          setImportando(false)
+          return
+        }
+
+        // Inserir em lotes de 50
+        const lote = 50
+        let inseridos = 0
+
+        for (let i = 0; i < contatosInserir.length; i += lote) {
+          const loteContatos = contatosInserir.slice(i, i + lote)
+          const { error } = await supabase.from('contatos').insert(loteContatos)
+          
+          if (error) {
+            console.error('Erro ao importar lote:', error)
+            erros.push(`Erro ao importar lote ${i / lote + 1}`)
+          } else {
+            inseridos += loteContatos.length
+          }
+        }
+
+        if (inseridos > 0) {
+          toast.success(`${inseridos} contato(s) importado(s) com sucesso!`)
+          carregarContatos()
+        }
+
+        if (erros.length > 0) {
+          console.warn('Erros na importação:', erros)
+          if (erros.length <= 5) {
+            erros.forEach(e => toast.error(e))
+          } else {
+            toast.error(`${erros.length} erros encontrados. Verifique o console.`)
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao processar CSV:', err)
+        toast.error('Erro ao processar o arquivo CSV')
+      } finally {
+        setImportando(false)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      }
+    }
+
+    reader.onerror = () => {
+      toast.error('Erro ao ler o arquivo')
+      setImportando(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+
+    reader.readAsText(file)
+  }
+
   const exportarPDF = () => {
     const doc = new jsPDF()
     const dataAtual = new Date().toLocaleDateString('pt-BR')
@@ -280,8 +429,10 @@ export default function Contatos() {
         <div className="flex gap-2">
           <button onClick={abrirNovoContato} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"><Plus size={16} /> Novo Contato</button>
           <button onClick={exportarPDF} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-all text-sm"><FileText size={16} /> Exportar PDF</button>
-          <input ref={fileInputRef} type="file" accept=".csv" onChange={() => {}} className="hidden" id="csv-upload" />
-          <label htmlFor="csv-upload" className="btn-primary flex items-center gap-2 text-sm cursor-pointer"><Upload size={16} /> Importar CSV</label>
+          <input ref={fileInputRef} type="file" accept=".csv" onChange={handleImportarCSV} className="hidden" id="csv-upload" />
+          <label htmlFor="csv-upload" className={`btn-primary flex items-center gap-2 text-sm cursor-pointer ${importando ? 'opacity-50 pointer-events-none' : ''}`}>
+            <Upload size={16} /> {importando ? 'Importando...' : 'Importar CSV'}
+          </label>
         </div>
       </div>
 
