@@ -27,7 +27,6 @@ export default function Contatos() {
   const [selectedContato, setSelectedContato] = useState(null)
   const [showNovo, setShowNovo] = useState(false)
   const [showPainel, setShowPainel] = useState(false)
-  const [importando, setImportando] = useState(false)
   const [novoContato, setNovoContato] = useState({ nome: '', telefone: '', email: '', empresa: '', instagram: '', linkedin: '', faturamento: '', nicho: '', tempoMercado: '' })
   const [dadosExtras, setDadosExtras] = useState({})
   const [salvando, setSalvando] = useState(false)
@@ -194,26 +193,6 @@ export default function Contatos() {
     carregarContatos()
   }
 
-  const contatosFiltrados = contatos.filter(c => {
-    const matchBusca = !busca || 
-      c.nome?.toLowerCase().includes(busca.toLowerCase()) || 
-      c.telefone?.includes(busca) || 
-      c.empresa?.toLowerCase().includes(busca.toLowerCase()) ||
-      c.email?.toLowerCase().includes(busca.toLowerCase())
-    const matchStatus = statusFilter === 'todos' || c.status === statusFilter
-    const matchMembro = filtroMembro === 'todos' || c.criado_por === filtroMembro
-    return matchBusca && matchStatus && matchMembro
-  })
-
-  const formatPhone = (p) => p ? `(${p.slice(0,2)}) ${p.slice(2,7)}-${p.slice(7)}` : '-'
-  const whatsappLink = (c) => c.telefone ? `https://wa.me/55${c.telefone}?text=Ol%C3%A1%20${encodeURIComponent(c.nome?.split(' ')[0] || '')}` : '#'
-
-  const getMembroNome = (criadoPor) => {
-    if (!criadoPor) return ''
-    const membro = membrosEquipe.find(m => m.id === criadoPor)
-    return membro ? membro.nome : ''
-  }
-
   const exportarPDF = () => {
     const doc = new jsPDF()
     const dataAtual = new Date().toLocaleDateString('pt-BR')
@@ -246,7 +225,7 @@ export default function Contatos() {
       statusOptions.find(s => s.value === c.status)?.label || c.status
     ])
     
-    doc.autoTable({
+    autoTable(doc, {
       startY: 38,
       head: [colunas],
       body: linhas,
@@ -257,6 +236,26 @@ export default function Contatos() {
     })
     
     doc.save(`contatos-${dataAtual.replace(/\//g, '-')}.pdf`)
+  }
+
+  const contatosFiltrados = contatos.filter(c => {
+    const matchBusca = !busca || 
+      c.nome?.toLowerCase().includes(busca.toLowerCase()) || 
+      c.telefone?.includes(busca) || 
+      c.empresa?.toLowerCase().includes(busca.toLowerCase()) ||
+      c.email?.toLowerCase().includes(busca.toLowerCase())
+    const matchStatus = statusFilter === 'todos' || c.status === statusFilter
+    const matchMembro = filtroMembro === 'todos' || c.criado_por === filtroMembro
+    return matchBusca && matchStatus && matchMembro
+  })
+
+  const formatPhone = (p) => p ? `(${p.slice(0,2)}) ${p.slice(2,7)}-${p.slice(7)}` : '-'
+  const whatsappLink = (c) => c.telefone ? `https://wa.me/55${c.telefone}?text=Ol%C3%A1%20${encodeURIComponent(c.nome?.split(' ')[0] || '')}` : '#'
+
+  const getMembroNome = (criadoPor) => {
+    if (!criadoPor) return ''
+    const membro = membrosEquipe.find(m => m.id === criadoPor)
+    return membro ? membro.nome : ''
   }
 
   return (
@@ -280,8 +279,10 @@ export default function Contatos() {
         </div>
         <div className="flex gap-2">
           <button onClick={abrirNovoContato} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"><Plus size={16} /> Novo Contato</button>
+          <button onClick={exportarPDF} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-all text-sm"><FileText size={16} /> Exportar PDF</button>
           <input ref={fileInputRef} type="file" accept=".csv" onChange={() => {}} className="hidden" id="csv-upload" />
-          <button onClick={exportarPDF} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-all text-sm"><FileText size={16} /> Exportar PDF</button>        </div>
+          <label htmlFor="csv-upload" className="btn-primary flex items-center gap-2 text-sm cursor-pointer"><Upload size={16} /> Importar CSV</label>
+        </div>
       </div>
 
       {showNovo && (
@@ -303,7 +304,6 @@ export default function Contatos() {
               <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Nicho</label><input type="text" value={novoContato.nicho} onChange={e => setNovoContato({...novoContato, nicho: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
               <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Tempo de Mercado</label><input type="text" value={novoContato.tempoMercado} onChange={e => setNovoContato({...novoContato, tempoMercado: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
               
-              {/* Campos Personalizados */}
               {camposPersonalizados.map((campo, index) => (
                 <div key={index}>
                   <label className="text-xs text-[var(--text-secondary)] mb-1 block">{campo.nome}</label>
