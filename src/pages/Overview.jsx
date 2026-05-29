@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { Users, PhoneCall, MessageCircle, Calendar, CheckCircle, TrendingUp, XCircle } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { Users, PhoneCall, MessageCircle, Calendar, CheckCircle, TrendingUp, XCircle, FileText } from 'lucide-react'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
 
 export default function Overview() {
   const { user } = useAuth()
@@ -60,13 +61,60 @@ export default function Overview() {
 
   const maxFunil = Math.max(...funil.map(f => f.value), 1)
 
+  const exportarPDF = () => {
+    const doc = new jsPDF()
+    const dataAtual = new Date().toLocaleDateString('pt-BR')
+    
+    // Título
+    doc.setFontSize(18)
+    doc.text(user?.equipe?.nome_sistema || 'PARHUB CRM', 14, 20)
+    doc.setFontSize(12)
+    doc.text('Relatório de Desempenho', 14, 28)
+    doc.setFontSize(10)
+    doc.text(`Gerado em: ${dataAtual}`, 14, 36)
+    
+    // KPIs
+    doc.setFontSize(14)
+    doc.text('Indicadores', 14, 48)
+    
+    const kpisData = kpis.map(kpi => [kpi.label, String(kpi.value)])
+    doc.autoTable({
+      startY: 52,
+      head: [['Indicador', 'Valor']],
+      body: kpisData,
+      theme: 'grid',
+      headStyles: { fillColor: [30, 45, 83] },
+    })
+    
+    // Funil
+    const funilY = doc.lastAutoTable.finalY + 10
+    doc.setFontSize(14)
+    doc.text('Funil de Captação', 14, funilY)
+    
+    const funilData = funil.map(f => [f.label, String(f.value)])
+    doc.autoTable({
+      startY: funilY + 4,
+      head: [['Etapa', 'Quantidade']],
+      body: funilData,
+      theme: 'grid',
+      headStyles: { fillColor: [30, 45, 83] },
+    })
+    
+    doc.save(`relatorio-${dataAtual.replace(/\//g, '-')}.pdf`)
+  }
+
   if (loading) return <div className="flex items-center justify-center h-96"><div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Overview</h1>
-        <p className="text-sm text-[var(--text-secondary)] mt-1">Visão geral da sua operação</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Overview</h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">Visão geral da sua operação</p>
+        </div>
+        <button onClick={exportarPDF} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm">
+          <FileText size={16} /> Exportar PDF
+        </button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">

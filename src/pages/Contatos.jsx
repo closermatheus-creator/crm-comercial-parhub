@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, Instagram, Linkedin, Mail, History, ChevronRight, X, Shield } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
+import { Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, Instagram, Linkedin, Mail, History, ChevronRight, X, Shield, FileText } from 'lucide-react'import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
 
 const statusOptions = [
   { value: 'todos', label: 'Todos os status' },
@@ -212,6 +213,51 @@ export default function Contatos() {
     return membro ? membro.nome : ''
   }
 
+  const exportarPDF = () => {
+    const doc = new jsPDF()
+    const dataAtual = new Date().toLocaleDateString('pt-BR')
+    const sistemaNome = user?.equipe?.nome_sistema || 'PARHUB CRM'
+    
+    doc.setFontSize(16)
+    doc.text(sistemaNome, 14, 18)
+    doc.setFontSize(11)
+    doc.text('Relatório de Contatos', 14, 26)
+    doc.setFontSize(9)
+    doc.text(`Gerado em: ${dataAtual} | Total: ${contatosFiltrados.length} contatos`, 14, 32)
+    
+    const colunas = [
+      'Nome', 
+      ...(isAdmin ? ['Dono'] : []), 
+      'Telefone', 
+      'Email', 
+      'Empresa', 
+      ...camposPersonalizados.map(c => c.nome), 
+      'Status'
+    ]
+    
+    const linhas = contatosFiltrados.map(c => [
+      c.nome || '-',
+      ...(isAdmin ? [(c.criado_por === user.uid ? 'Você' : getMembroNome(c.criado_por) || '-')] : []),
+      c.telefone ? formatPhone(c.telefone) : '-',
+      c.email || '-',
+      c.empresa || '-',
+      ...camposPersonalizados.map(cp => c.dados_extras?.[cp.nome] || '-'),
+      statusOptions.find(s => s.value === c.status)?.label || c.status
+    ])
+    
+    doc.autoTable({
+      startY: 38,
+      head: [colunas],
+      body: linhas,
+      theme: 'grid',
+      headStyles: { fillColor: [30, 45, 83], fontSize: 8 },
+      bodyStyles: { fontSize: 8 },
+      styles: { cellPadding: 2 },
+    })
+    
+    doc.save(`contatos-${dataAtual.replace(/\//g, '-')}.pdf`)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -234,8 +280,7 @@ export default function Contatos() {
         <div className="flex gap-2">
           <button onClick={abrirNovoContato} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"><Plus size={16} /> Novo Contato</button>
           <input ref={fileInputRef} type="file" accept=".csv" onChange={() => {}} className="hidden" id="csv-upload" />
-          <label htmlFor="csv-upload" className="btn-primary flex items-center gap-2 text-sm cursor-pointer"><Upload size={16} /> Importar CSV</label>
-        </div>
+          <button onClick={exportarPDF} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-all text-sm"><FileText size={16} /> Exportar PDF</button>        </div>
       </div>
 
       {showNovo && (
