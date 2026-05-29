@@ -18,9 +18,17 @@
   }
 
   .dark {
+    --bg-primary: #1E2D53;
+    --bg-secondary: #152040;
+    --bg-tertiary: #243660;
+    --text-primary: #FBF5EE;
+    --text-secondary: #D4B285;
+    --border-color: rgba(212, 178, 133, 0.15);
     --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.4);
     --card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    /* bg-primary, bg-secondary, bg-tertiary, text-secondary, border-color são definidos dinamicamente via JS */
+    --brand-color: #D4B285;
+    --brand-color-hover: #c4a275;
+    --brand-text: #1E2D53;
   }
 
   * {
