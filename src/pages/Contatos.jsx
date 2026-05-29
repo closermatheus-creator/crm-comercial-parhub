@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, Instagram, Linkedin, Mail, History, ChevronRight, X } from 'lucide-react'
+import { Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, Instagram, Linkedin, Mail, History, ChevronRight, X, Shield } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
@@ -20,7 +20,7 @@ export default function Contatos() {
   const [contatos, setContatos] = useState([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
-  const [statusFilter, setStatusFilter] = useState('nao_abordado')
+  const [statusFilter, setStatusFilter] = useState('todos')
   const [ordenacao, setOrdenacao] = useState('data')
   const [selectedContato, setSelectedContato] = useState(null)
   const [showNovo, setShowNovo] = useState(false)
@@ -30,13 +30,26 @@ export default function Contatos() {
   const [salvando, setSalvando] = useState(false)
   const [atividades, setAtividades] = useState([])
   const [carregandoAtividades, setCarregandoAtividades] = useState(false)
+  const [membrosEquipe, setMembrosEquipe] = useState([])
+  const [filtroMembro, setFiltroMembro] = useState('todos')
   const fileInputRef = useRef(null)
+
+  const isAdmin = user?.role === 'admin'
 
   useEffect(() => { 
     if (user?.equipeId) {
       carregarContatos()
+      if (isAdmin) carregarMembros()
     }
   }, [user?.equipeId, ordenacao])
+
+  const carregarMembros = async () => {
+    const { data } = await supabase
+      .from('clientes')
+      .select('id, nome')
+      .eq('equipe_id', user.equipeId)
+    setMembrosEquipe(data || [])
+  }
 
   const carregarAtividades = async (contatoId) => {
     setCarregandoAtividades(true)
@@ -58,6 +71,11 @@ export default function Contatos() {
     try {
       setLoading(true)
       let query = supabase.from('contatos').select('*').eq('equipe_id', user.equipeId)
+      
+      // Admin vê todos, membro vê apenas os seus
+      if (!isAdmin) {
+        query = query.eq('criado_por', user.uid)
+      }
       
       switch (ordenacao) {
         case 'nome':
@@ -162,20 +180,43 @@ export default function Contatos() {
   }
 
   const contatosFiltrados = contatos.filter(c => {
-    const matchBusca = !busca || c.nome?.toLowerCase().includes(busca.toLowerCase()) || c.telefone?.includes(busca) || c.empresa?.toLowerCase().includes(busca.toLowerCase())
+    const matchBusca = !busca || 
+      c.nome?.toLowerCase().includes(busca.toLowerCase()) || 
+      c.telefone?.includes(busca) || 
+      c.empresa?.toLowerCase().includes(busca.toLowerCase()) ||
+      c.email?.toLowerCase().includes(busca.toLowerCase())
     const matchStatus = statusFilter === 'todos' || c.status === statusFilter
-    return matchBusca && matchStatus
+    const matchMembro = filtroMembro === 'todos' || c.criado_por === filtroMembro
+    return matchBusca && matchStatus && matchMembro
   })
 
   const formatPhone = (p) => p ? `(${p.slice(0,2)}) ${p.slice(2,7)}-${p.slice(7)}` : '-'
   const whatsappLink = (c) => c.telefone ? `https://wa.me/55${c.telefone}?text=Ol%C3%A1%20${encodeURIComponent(c.nome?.split(' ')[0] || '')}` : '#'
 
+  const getMembroNome = (criadoPor) => {
+    if (!criadoPor) return ''
+    const membro = membrosEquipe.find(m => m.id === criadoPor)
+    return membro ? membro.nome : ''
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Contatos</h1>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">{loading ? 'Carregando...' : `${contatosFiltrados.length} de ${contatos.length} contatos`}</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">Contatos</h1>
+            {isAdmin && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-500 flex items-center gap-1">
+                <Shield size={10} /> Admin
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">
+            {loading ? 'Carregando...' : isAdmin 
+              ? `${contatosFiltrados.length} de ${contatos.length} contatos da equipe`
+              : `${contatosFiltrados.length} de ${contatos.length} contatos`
+            }
+          </p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowNovo(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"><Plus size={16} /> Novo Contato</button>
@@ -220,6 +261,14 @@ export default function Contatos() {
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm">
             {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+          {isAdmin && membrosEquipe.length > 0 && (
+            <select value={filtroMembro} onChange={e => setFiltroMembro(e.target.value)} className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm">
+              <option value="todos">Todos os membros</option>
+              {membrosEquipe.map(m => (
+                <option key={m.id} value={m.id}>{m.nome}</option>
+              ))}
+            </select>
+          )}
           <select value={ordenacao} onChange={e => setOrdenacao(e.target.value)} className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm">
             <option value="nome">Nome A-Z</option>
             <option value="nome_desc">Nome Z-A</option>
@@ -237,12 +286,24 @@ export default function Contatos() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead><tr className="border-b border-[var(--border-color)]">
-                <th className="text-left p-3 text-[10px] font-medium uppercase">Nome</th><th className="text-left p-3 text-[10px] font-medium uppercase">Telefone</th><th className="text-left p-3 text-[10px] font-medium uppercase">Email</th><th className="text-left p-3 text-[10px] font-medium uppercase">Empresa</th><th className="text-left p-3 text-[10px] font-medium uppercase">Faturamento</th><th className="text-left p-3 text-[10px] font-medium uppercase">Status</th><th className="text-left p-3 text-[10px] font-medium uppercase">WPP</th>
+                <th className="text-left p-3 text-[10px] font-medium uppercase">Nome</th>
+                {isAdmin && <th className="text-left p-3 text-[10px] font-medium uppercase">Dono</th>}
+                <th className="text-left p-3 text-[10px] font-medium uppercase">Telefone</th>
+                <th className="text-left p-3 text-[10px] font-medium uppercase">Email</th>
+                <th className="text-left p-3 text-[10px] font-medium uppercase">Empresa</th>
+                <th className="text-left p-3 text-[10px] font-medium uppercase">Faturamento</th>
+                <th className="text-left p-3 text-[10px] font-medium uppercase">Status</th>
+                <th className="text-left p-3 text-[10px] font-medium uppercase">WPP</th>
               </tr></thead>
               <tbody>
                 {contatosFiltrados.map(c => (
                   <tr key={c.id} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-tertiary)]/50">
                     <td className="p-3"><button onClick={() => { setSelectedContato(c); setShowPainel(true); carregarAtividades(c.id) }} className="text-left hover:text-brand-500 text-sm font-medium">{c.nome}</button></td>
+                    {isAdmin && (
+                      <td className="p-3 text-xs text-[var(--text-secondary)]">
+                        {c.criado_por === user.uid ? 'Você' : getMembroNome(c.criado_por) || '-'}
+                      </td>
+                    )}
                     <td className="p-3 text-sm font-mono">{c.telefone ? formatPhone(c.telefone) : '-'}</td>
                     <td className="p-3 text-xs">{c.email || '-'}</td>
                     <td className="p-3 text-xs">{c.empresa || '-'}</td>
@@ -263,7 +324,14 @@ export default function Contatos() {
           <div className="relative bg-[var(--bg-secondary)] border-l border-[var(--border-color)] w-full max-w-md shadow-2xl z-10 h-full overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedContato.nome}</h2>
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedContato.nome}</h2>
+                  {isAdmin && selectedContato.criado_por !== user.uid && (
+                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                      Cadastrado por: {getMembroNome(selectedContato.criado_por) || 'Desconhecido'}
+                    </p>
+                  )}
+                </div>
                 <button onClick={() => { setShowPainel(false); setSelectedContato(null) }} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]"><X size={20} /></button>
               </div>
               
