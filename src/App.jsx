@@ -23,6 +23,23 @@ function PrivateRoute({ children }) {
   return user ? children : <Navigate to="/login" />
 }
 
+function AdminRoute({ children }) {
+  const { user, loading } = useAuth()
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
+        <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+  
+  if (!user) return <Navigate to="/login" />
+  if (user.role !== 'admin') return <Navigate to="/overview" />
+  
+  return children
+}
+
 export default function App() {
   return (
     <Routes>
@@ -34,7 +51,7 @@ export default function App() {
         <Route path="pipeline" element={<Pipeline />} />
         <Route path="agenda" element={<Agenda />} />
         <Route path="insights" element={<Insights />} />
-        <Route path="equipe" element={<Equipe />} />
+        <Route path="equipe" element={<AdminRoute><Equipe /></AdminRoute>} />
       </Route>
     </Routes>
   )

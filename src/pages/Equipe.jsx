@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { Copy, Check, UserPlus, UserMinus, Link2, Palette, Upload, Save } from 'lucide-react'
+import { Copy, Check, UserPlus, UserMinus, Link2, Palette, Upload, Save, Shield, ShieldOff, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function Equipe() {
   const { user, recarregarEquipe } = useAuth()
+  const navigate = useNavigate()
   const [equipe, setEquipe] = useState(null)
   const [membros, setMembros] = useState([])
   const [loading, setLoading] = useState(true)
@@ -26,7 +28,13 @@ export default function Equipe() {
 
   const isAdmin = user?.role === 'admin'
 
-  useEffect(() => { carregarEquipe() }, [user])
+  useEffect(() => {
+    if (!isAdmin) {
+      navigate('/overview')
+      return
+    }
+    carregarEquipe()
+  }, [user])
 
   const carregarEquipe = async () => {
     if (!user?.equipeId) return
@@ -68,6 +76,20 @@ export default function Equipe() {
     setSalvandoBranding(false)
   }
 
+  const toggleAdmin = async (membroId, novaRole) => {
+    const { error } = await supabase
+      .from('clientes')
+      .update({ role: novaRole })
+      .eq('id', membroId)
+    
+    if (error) {
+      toast.error('Erro ao alterar permissão')
+    } else {
+      toast.success(novaRole === 'admin' ? 'Admin promovido!' : 'Admin removido!')
+      carregarEquipe()
+    }
+  }
+
   const copiarCodigo = () => { navigator.clipboard.writeText(user.equipeId); setCopied(true); toast.success('Código copiado!'); setTimeout(() => setCopied(false), 2000) }
 
   const entrarNaEquipe = async () => {
@@ -84,6 +106,7 @@ export default function Equipe() {
   const buscarUsuario = async () => {
     const { data } = await supabase.from('clientes').select('*').eq('email', emailBusca.trim().toLowerCase())
     if (!data || data.length === 0) { toast.error('Usuário não encontrado'); return }
+    if (membros.find(m => m.id === data[0].id)) { toast.error('Usuário já é membro'); return }
     setUsuarioEncontrado(data[0])
   }
 
@@ -97,13 +120,29 @@ export default function Equipe() {
   }
 
   const removerMembro = async (id) => {
+    if (membros.filter(m => m.role === 'admin').length === 1 && membros.find(m => m.id === id)?.role === 'admin') {
+      toast.error('Não é possível remover o último admin')
+      return
+    }
     await supabase.from('equipes').update({ membros: equipe.membros.filter(m => m !== id) }).eq('id', user.equipeId)
-    await supabase.from('clientes').update({ equipe_id: null }).eq('id', id)
+    await supabase.from('clientes').update({ equipe_id: null, role: 'membro' }).eq('id', id)
     toast.success('Removido!')
     carregarEquipe()
   }
 
   if (loading) return <div className="flex items-center justify-center h-96"><div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>
+
+  if (!isAdmin) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <Lock size={40} className="mx-auto mb-4 text-[var(--text-secondary)]" />
+          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Acesso Restrito</h2>
+          <p className="text-sm text-[var(--text-secondary)]">Apenas administradores podem acessar esta página.</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!user?.equipeId) {
     return (
@@ -121,89 +160,17 @@ export default function Equipe() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div><h1 className="text-2xl font-bold">Equipe</h1><p className="text-sm text-[var(--text-secondary)]">Gerencie membros e personalização</p></div>
-
-      {/* White Label - Seção de Personalização */}
-      {isAdmin && (
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold flex items-center gap-2"><Palette size={16} className="text-brand-500" />Personalização (White Label)</h3>
-            {!editando ? (
-              <button onClick={() => setEditando(true)} className="text-xs text-brand-500 hover:underline">Editar</button>
-            ) : (
-              <button onClick={salvarBranding} disabled={salvandoBranding} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand-500 text-white text-xs">
-                <Save size={12} /> {salvandoBranding ? 'Salvando...' : 'Salvar'}
-              </button>
-            )}
-          </div>
-
-          {editando ? (
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Nome do Sistema</label>
-                <input
-                  type="text"
-                  value={branding.nome_sistema}
-                  onChange={e => setBranding({ ...branding, nome_sistema: e.target.value })}
-                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm"
-                  placeholder="PARHUB CRM"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Cor Primária</label>
-                <div className="flex gap-2">
-                  <input
-                    type="color"
-                    value={branding.cor_primaria}
-                    onChange={e => setBranding({ ...branding, cor_primaria: e.target.value })}
-                    className="w-12 h-10 rounded-lg border border-[var(--border-color)] cursor-pointer bg-[var(--bg-tertiary)]"
-                  />
-                  <input
-                    type="text"
-                    value={branding.cor_primaria}
-                    onChange={e => setBranding({ ...branding, cor_primaria: e.target.value })}
-                    className="flex-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm font-mono"
-                    placeholder="#a855f7"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] mb-1 block flex items-center gap-1"><Upload size={12} /> URL do Logo</label>
-                <input
-                  type="text"
-                  value={branding.logo_url}
-                  onChange={e => setBranding({ ...branding, logo_url: e.target.value })}
-                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm"
-                  placeholder="https://..."
-                />
-                {branding.logo_url && (
-                  <img src={branding.logo_url} alt="Preview" className="w-16 h-16 rounded-lg object-cover mt-2 border border-[var(--border-color)]" />
-                )}
-              </div>
-              <button onClick={() => { setEditando(false); setBranding({ nome_sistema: equipe?.nome_sistema || 'PARHUB CRM', cor_primaria: equipe?.cor_primaria || '#a855f7', logo_url: equipe?.logo_url || '' }) }} className="text-xs text-[var(--text-secondary)] hover:underline">Cancelar</button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-[var(--bg-tertiary)] rounded-lg">
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: branding.cor_primaria }}>
-                  {branding.logo_url ? <img src={branding.logo_url} alt="" className="w-full h-full rounded-lg object-cover" /> : branding.nome_sistema?.charAt(0)}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-[var(--text-primary)]">{branding.nome_sistema}</p>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <div className="w-3 h-3 rounded-full border border-[var(--border-color)]" style={{ backgroundColor: branding.cor_primaria }} />
-                    <p className="text-xs text-[var(--text-secondary)] font-mono">{branding.cor_primaria}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      <div>
+        <h1 className="text-2xl font-bold">Equipe</h1>
+        <p className="text-sm text-[var(--text-secondary)]">Gerencie membros e personalização</p>
+      </div>
 
       {/* Membros */}
       <div className="card p-6">
-        <div className="flex justify-between mb-4"><h3 className="text-sm font-semibold">Sua Equipe</h3><span className="text-xs text-brand-500 bg-brand-500/10 px-2 py-1 rounded-full">{membros.length} membro(s)</span></div>
+        <div className="flex justify-between mb-4">
+          <h3 className="text-sm font-semibold">Membros da Equipe</h3>
+          <span className="text-xs text-brand-500 bg-brand-500/10 px-2 py-1 rounded-full">{membros.length} membro(s)</span>
+        </div>
         <div className="bg-[var(--bg-tertiary)] rounded-lg p-4 mb-4">
           <p className="text-xs mb-2">Código da equipe</p>
           <div className="flex items-center gap-2">
@@ -216,41 +183,103 @@ export default function Equipe() {
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-white text-sm font-bold">{m.nome?.charAt(0)}</div>
               <div>
-                <p className="text-sm font-medium">{m.nome} {m.id === user.uid && <span className="text-[10px] text-brand-500">(você)</span>}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">{m.nome} {m.id === user.uid && <span className="text-[10px] text-brand-500">(você)</span>}</p>
+                  {m.role === 'admin' && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-500/10 text-amber-500 flex items-center gap-0.5">
+                      <Shield size={8} /> Admin
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-[var(--text-secondary)]">{m.email}</p>
               </div>
             </div>
-            {isAdmin && m.id !== user.uid && <button onClick={() => removerMembro(m.id)} className="p-2 rounded-lg hover:bg-red-500/10 text-red-500"><UserMinus size={16} /></button>}
+            {m.id !== user.uid && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => toggleAdmin(m.id, m.role === 'admin' ? 'membro' : 'admin')}
+                  className={`p-2 rounded-lg transition-colors ${m.role === 'admin' ? 'hover:bg-amber-500/10 text-amber-500' : 'hover:bg-brand-500/10 text-[var(--text-secondary)]'}`}
+                  title={m.role === 'admin' ? 'Remover admin' : 'Tornar admin'}
+                >
+                  {m.role === 'admin' ? <ShieldOff size={14} /> : <Shield size={14} />}
+                </button>
+                <button onClick={() => removerMembro(m.id)} className="p-2 rounded-lg hover:bg-red-500/10 text-red-500">
+                  <UserMinus size={14} />
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
 
+      {/* Adicionar Membro */}
       <div className="card p-6">
-        <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><Link2 size={16} className="text-brand-500" />Entrar em outra Equipe</h3>
-        <div className="flex gap-2">
-          <input type="text" value={codigoEntrada} onChange={e => setCodigoEntrada(e.target.value)} placeholder="Cole o código" className="flex-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm font-mono" />
-          <button onClick={entrarNaEquipe} disabled={entrando} className="btn-primary text-sm">{entrando ? '...' : 'Entrar'}</button>
+        <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><UserPlus size={16} className="text-brand-500" />Adicionar Membro</h3>
+        <div className="flex gap-2 mb-3">
+          <input type="email" value={emailBusca} onChange={e => setEmailBusca(e.target.value)} placeholder="Email Google do usuário" className="flex-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" />
+          <button onClick={buscarUsuario} className="btn-primary text-sm">Buscar</button>
         </div>
+        {usuarioEncontrado && (
+          <div className="bg-brand-500/5 border border-brand-500/20 rounded-lg p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-brand-500 flex items-center justify-center text-white font-bold">{usuarioEncontrado.nome?.charAt(0)}</div>
+              <div><p className="text-sm font-medium">{usuarioEncontrado.nome}</p><p className="text-xs text-[var(--text-secondary)]">{usuarioEncontrado.email}</p></div>
+            </div>
+            <button onClick={adicionarMembro} className="btn-primary text-sm flex items-center gap-1"><UserPlus size={14} />Adicionar</button>
+          </div>
+        )}
       </div>
 
-      {isAdmin && (
-        <div className="card p-6">
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><UserPlus size={16} className="text-brand-500" />Adicionar Membro</h3>
-          <div className="flex gap-2 mb-3">
-            <input type="email" value={emailBusca} onChange={e => setEmailBusca(e.target.value)} placeholder="Email Google" className="flex-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" />
-            <button onClick={buscarUsuario} className="btn-primary text-sm">Buscar</button>
-          </div>
-          {usuarioEncontrado && (
-            <div className="bg-brand-500/5 border border-brand-500/20 rounded-lg p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-brand-500 flex items-center justify-center text-white font-bold">{usuarioEncontrado.nome?.charAt(0)}</div>
-                <div><p className="text-sm font-medium">{usuarioEncontrado.nome}</p><p className="text-xs text-[var(--text-secondary)]">{usuarioEncontrado.email}</p></div>
-              </div>
-              <button onClick={adicionarMembro} className="btn-primary text-sm flex items-center gap-1"><UserPlus size={14} />Adicionar</button>
-            </div>
+      {/* White Label */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold flex items-center gap-2"><Palette size={16} className="text-brand-500" />Personalização (White Label)</h3>
+          {!editando ? (
+            <button onClick={() => setEditando(true)} className="text-xs text-brand-500 hover:underline">Editar</button>
+          ) : (
+            <button onClick={salvarBranding} disabled={salvandoBranding} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand-500 text-white text-xs">
+              <Save size={12} /> {salvandoBranding ? 'Salvando...' : 'Salvar'}
+            </button>
           )}
         </div>
-      )}
+
+        {editando ? (
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-[var(--text-secondary)] mb-1 block">Nome do Sistema</label>
+              <input type="text" value={branding.nome_sistema} onChange={e => setBranding({ ...branding, nome_sistema: e.target.value })} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" placeholder="PARHUB CRM" />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--text-secondary)] mb-1 block">Cor Primária</label>
+              <div className="flex gap-2">
+                <input type="color" value={branding.cor_primaria} onChange={e => setBranding({ ...branding, cor_primaria: e.target.value })} className="w-12 h-10 rounded-lg border border-[var(--border-color)] cursor-pointer bg-[var(--bg-tertiary)]" />
+                <input type="text" value={branding.cor_primaria} onChange={e => setBranding({ ...branding, cor_primaria: e.target.value })} className="flex-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm font-mono" placeholder="#a855f7" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-[var(--text-secondary)] mb-1 block flex items-center gap-1"><Upload size={12} /> URL do Logo</label>
+              <input type="text" value={branding.logo_url} onChange={e => setBranding({ ...branding, logo_url: e.target.value })} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" placeholder="https://..." />
+              {branding.logo_url && <img src={branding.logo_url} alt="Preview" className="w-16 h-16 rounded-lg object-cover mt-2 border border-[var(--border-color)]" />}
+            </div>
+            <button onClick={() => { setEditando(false); setBranding({ nome_sistema: equipe?.nome_sistema || 'PARHUB CRM', cor_primaria: equipe?.cor_primaria || '#a855f7', logo_url: equipe?.logo_url || '' }) }} className="text-xs text-[var(--text-secondary)] hover:underline">Cancelar</button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-3 bg-[var(--bg-tertiary)] rounded-lg">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: branding.cor_primaria }}>
+                {branding.logo_url ? <img src={branding.logo_url} alt="" className="w-full h-full rounded-lg object-cover" /> : branding.nome_sistema?.charAt(0)}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-[var(--text-primary)]">{branding.nome_sistema}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <div className="w-3 h-3 rounded-full border border-[var(--border-color)]" style={{ backgroundColor: branding.cor_primaria }} />
+                  <p className="text-xs text-[var(--text-secondary)] font-mono">{branding.cor_primaria}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
