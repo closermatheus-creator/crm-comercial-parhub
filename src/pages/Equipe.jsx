@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { Copy, Check, UserPlus, UserMinus, Link2, Palette, Upload, Save, Shield, ShieldOff, Lock } from 'lucide-react'
+import { Copy, Check, UserPlus, UserMinus, Link2, Palette, Upload, Save, Shield, ShieldOff, Lock, Plus, Trash2, Columns } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function Equipe() {
@@ -26,6 +26,11 @@ export default function Equipe() {
     logo_url: ''
   })
 
+  // Campos Personalizados
+  const [camposPersonalizados, setCamposPersonalizados] = useState([])
+  const [novoCampo, setNovoCampo] = useState({ nome: '', tipo: 'texto' })
+  const [adicionandoCampo, setAdicionandoCampo] = useState(false)
+
   const isAdmin = user?.role === 'admin'
 
   useEffect(() => {
@@ -46,6 +51,7 @@ export default function Equipe() {
         cor_primaria: eq.cor_primaria || '#a855f7',
         logo_url: eq.logo_url || ''
       })
+      setCamposPersonalizados(eq.campos_personalizados || [])
       if (eq.membros) {
         const { data: mems } = await supabase.from('clientes').select('*').in('id', eq.membros)
         setMembros(mems || [])
@@ -74,6 +80,47 @@ export default function Equipe() {
       setEditando(false)
     }
     setSalvandoBranding(false)
+  }
+
+  const adicionarCampo = async () => {
+    if (!novoCampo.nome.trim()) return toast.error('Nome do campo é obrigatório')
+    
+    const campoExiste = camposPersonalizados.find(c => c.nome.toLowerCase() === novoCampo.nome.trim().toLowerCase())
+    if (campoExiste) return toast.error('Este campo já existe')
+    
+    const novosCampos = [...camposPersonalizados, { nome: novoCampo.nome.trim(), tipo: novoCampo.tipo }]
+    
+    const { error } = await supabase
+      .from('equipes')
+      .update({ campos_personalizados: novosCampos })
+      .eq('id', user.equipeId)
+    
+    if (error) {
+      toast.error('Erro ao adicionar campo')
+    } else {
+      setCamposPersonalizados(novosCampos)
+      setNovoCampo({ nome: '', tipo: 'texto' })
+      setAdicionandoCampo(false)
+      await recarregarEquipe()
+      toast.success('Campo adicionado!')
+    }
+  }
+
+  const removerCampo = async (index) => {
+    const novosCampos = camposPersonalizados.filter((_, i) => i !== index)
+    
+    const { error } = await supabase
+      .from('equipes')
+      .update({ campos_personalizados: novosCampos })
+      .eq('id', user.equipeId)
+    
+    if (error) {
+      toast.error('Erro ao remover campo')
+    } else {
+      setCamposPersonalizados(novosCampos)
+      await recarregarEquipe()
+      toast.success('Campo removido!')
+    }
   }
 
   const toggleAdmin = async (membroId, novaRole) => {
@@ -162,7 +209,7 @@ export default function Equipe() {
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold">Equipe</h1>
-        <p className="text-sm text-[var(--text-secondary)]">Gerencie membros e personalização</p>
+        <p className="text-sm text-[var(--text-secondary)]">Gerencie membros, campos e personalização</p>
       </div>
 
       {/* Membros */}
@@ -196,11 +243,7 @@ export default function Equipe() {
             </div>
             {m.id !== user.uid && (
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => toggleAdmin(m.id, m.role === 'admin' ? 'membro' : 'admin')}
-                  className={`p-2 rounded-lg transition-colors ${m.role === 'admin' ? 'hover:bg-amber-500/10 text-amber-500' : 'hover:bg-brand-500/10 text-[var(--text-secondary)]'}`}
-                  title={m.role === 'admin' ? 'Remover admin' : 'Tornar admin'}
-                >
+                <button onClick={() => toggleAdmin(m.id, m.role === 'admin' ? 'membro' : 'admin')} className={`p-2 rounded-lg transition-colors ${m.role === 'admin' ? 'hover:bg-amber-500/10 text-amber-500' : 'hover:bg-brand-500/10 text-[var(--text-secondary)]'}`}>
                   {m.role === 'admin' ? <ShieldOff size={14} /> : <Shield size={14} />}
                 </button>
                 <button onClick={() => removerMembro(m.id)} className="p-2 rounded-lg hover:bg-red-500/10 text-red-500">
@@ -227,6 +270,59 @@ export default function Equipe() {
             </div>
             <button onClick={adicionarMembro} className="btn-primary text-sm flex items-center gap-1"><UserPlus size={14} />Adicionar</button>
           </div>
+        )}
+      </div>
+
+      {/* Campos Personalizados */}
+      <div className="card p-6">
+        <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><Columns size={16} className="text-brand-500" />Campos Personalizados</h3>
+        <p className="text-xs text-[var(--text-secondary)] mb-4">Crie campos extras para os contatos da sua equipe.</p>
+        
+        {camposPersonalizados.length === 0 && !adicionandoCampo ? (
+          <div className="text-center py-4 text-sm text-[var(--text-secondary)]">
+            Nenhum campo personalizado. Clique em "Adicionar Campo" para criar.
+          </div>
+        ) : (
+          <div className="space-y-2 mb-4">
+            {camposPersonalizados.map((campo, index) => (
+              <div key={index} className="flex items-center justify-between p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">{campo.nome}</p>
+                  <p className="text-xs text-[var(--text-secondary)] capitalize">{campo.tipo}</p>
+                </div>
+                <button onClick={() => removerCampo(index)} className="p-2 rounded-lg hover:bg-red-500/10 text-red-500">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {adicionandoCampo && (
+          <div className="bg-[var(--bg-tertiary)] rounded-lg p-4 mb-3 space-y-3">
+            <div>
+              <label className="text-xs text-[var(--text-secondary)] mb-1 block">Nome do Campo</label>
+              <input type="text" value={novoCampo.nome} onChange={e => setNovoCampo({ ...novoCampo, nome: e.target.value })} placeholder="Ex: CPF, Origem, etc." className="w-full px-3 py-2 bg-[var(--bg-secondary)] rounded-lg text-sm" autoFocus />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--text-secondary)] mb-1 block">Tipo</label>
+              <select value={novoCampo.tipo} onChange={e => setNovoCampo({ ...novoCampo, tipo: e.target.value })} className="w-full px-3 py-2 bg-[var(--bg-secondary)] rounded-lg text-sm">
+                <option value="texto">Texto</option>
+                <option value="numero">Número</option>
+                <option value="data">Data</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={adicionarCampo} className="btn-primary text-sm flex-1">Adicionar</button>
+              <button onClick={() => { setAdicionandoCampo(false); setNovoCampo({ nome: '', tipo: 'texto' }) }} className="px-4 py-2 text-sm rounded-lg border border-[var(--border-color)]">Cancelar</button>
+            </div>
+          </div>
+        )}
+
+        {!adicionandoCampo && (
+          <button onClick={() => setAdicionandoCampo(true)} className="flex items-center gap-1 text-xs text-brand-500 hover:underline">
+            <Plus size={12} /> Adicionar Campo
+          </button>
         )}
       </div>
 
@@ -266,7 +362,7 @@ export default function Equipe() {
         ) : (
           <div className="space-y-3">
             <div className="flex items-center gap-3 p-3 bg-[var(--bg-tertiary)] rounded-lg">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: branding.cor_primaria }}>
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--brand-text)] font-bold text-lg" style={{ backgroundColor: branding.cor_primaria }}>
                 {branding.logo_url ? <img src={branding.logo_url} alt="" className="w-full h-full rounded-lg object-cover" /> : branding.nome_sistema?.charAt(0)}
               </div>
               <div>

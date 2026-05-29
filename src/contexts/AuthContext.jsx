@@ -8,18 +8,13 @@ function aplicarCorTema(corHex) {
   
   if (!corHex) return
   
-  // Converte hex para RGB
   const r = parseInt(corHex.slice(1, 3), 16)
   const g = parseInt(corHex.slice(3, 5), 16)
   const b = parseInt(corHex.slice(5, 7), 16)
   
-  // Cor principal
   root.style.setProperty('--brand-color', corHex)
-  
-  // Hover (um pouco mais escuro)
   root.style.setProperty('--brand-color-hover', `rgb(${Math.max(0, r - 25)}, ${Math.max(0, g - 25)}, ${Math.max(0, b - 25)})`)
   
-  // Texto (branco ou escuro conforme luminosidade)
   const luminosidade = (0.299 * r + 0.587 * g + 0.114 * b) / 255
   root.style.setProperty('--brand-text', luminosidade > 0.6 ? '#1E2D53' : '#ffffff')
 }
@@ -60,7 +55,8 @@ export function AuthProvider({ children }) {
         foto: authUser.user_metadata?.avatar_url,
         equipeId: cliente?.equipe_id || null,
         role: cliente?.role || 'membro',
-        equipe: equipe
+        equipe: equipe,
+        camposPersonalizados: equipe?.campos_personalizados || []
       })
     } catch (err) {
       console.error('Erro ao carregar usuário:', err)
@@ -71,7 +67,8 @@ export function AuthProvider({ children }) {
         foto: authUser.user_metadata?.avatar_url,
         equipeId: null,
         role: 'membro',
-        equipe: null
+        equipe: null,
+        camposPersonalizados: []
       })
     } finally {
       setLoading(false)
@@ -82,7 +79,11 @@ export function AuthProvider({ children }) {
     if (!user?.equipeId) return
     const equipe = await carregarEquipe(user.equipeId)
     if (equipe) {
-      setUser(prev => ({ ...prev, equipe }))
+      setUser(prev => ({ 
+        ...prev, 
+        equipe,
+        camposPersonalizados: equipe?.campos_personalizados || []
+      }))
     }
   }, [user?.equipeId])
 

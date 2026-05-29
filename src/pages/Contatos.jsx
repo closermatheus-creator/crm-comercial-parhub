@@ -27,6 +27,7 @@ export default function Contatos() {
   const [showPainel, setShowPainel] = useState(false)
   const [importando, setImportando] = useState(false)
   const [novoContato, setNovoContato] = useState({ nome: '', telefone: '', email: '', empresa: '', instagram: '', linkedin: '', faturamento: '', nicho: '', tempoMercado: '' })
+  const [dadosExtras, setDadosExtras] = useState({})
   const [salvando, setSalvando] = useState(false)
   const [atividades, setAtividades] = useState([])
   const [carregandoAtividades, setCarregandoAtividades] = useState(false)
@@ -35,6 +36,7 @@ export default function Contatos() {
   const fileInputRef = useRef(null)
 
   const isAdmin = user?.role === 'admin'
+  const camposPersonalizados = user?.camposPersonalizados || []
 
   useEffect(() => { 
     if (user?.equipeId) {
@@ -72,7 +74,6 @@ export default function Contatos() {
       setLoading(true)
       let query = supabase.from('contatos').select('*').eq('equipe_id', user.equipeId)
       
-      // Admin vê todos, membro vê apenas os seus
       if (!isAdmin) {
         query = query.eq('criado_por', user.uid)
       }
@@ -137,6 +138,16 @@ export default function Contatos() {
     toast.success('Status atualizado!')
   }
 
+  const abrirNovoContato = () => {
+    setNovoContato({ nome: '', telefone: '', email: '', empresa: '', instagram: '', linkedin: '', faturamento: '', nicho: '', tempoMercado: '' })
+    const extrasIniciais = {}
+    camposPersonalizados.forEach(campo => {
+      extrasIniciais[campo.nome] = ''
+    })
+    setDadosExtras(extrasIniciais)
+    setShowNovo(true)
+  }
+
   const handleSalvar = async () => {
     if (!novoContato.nome.trim()) { toast.error('Nome é obrigatório'); return }
     setSalvando(true)
@@ -150,6 +161,7 @@ export default function Contatos() {
       faturamento: novoContato.faturamento || null,
       nicho: novoContato.nicho || null,
       tempo_mercado: novoContato.tempoMercado || null,
+      dados_extras: dadosExtras,
       tag: 'prospeccao_propria',
       status: 'nao_abordado',
       equipe_id: user.equipeId,
@@ -174,6 +186,7 @@ export default function Contatos() {
 
     toast.success('Contato adicionado!')
     setNovoContato({ nome: '', telefone: '', email: '', empresa: '', instagram: '', linkedin: '', faturamento: '', nicho: '', tempoMercado: '' })
+    setDadosExtras({})
     setShowNovo(false)
     setSalvando(false)
     carregarContatos()
@@ -219,7 +232,7 @@ export default function Contatos() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setShowNovo(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"><Plus size={16} /> Novo Contato</button>
+          <button onClick={abrirNovoContato} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"><Plus size={16} /> Novo Contato</button>
           <input ref={fileInputRef} type="file" accept=".csv" onChange={() => {}} className="hidden" id="csv-upload" />
           <label htmlFor="csv-upload" className="btn-primary flex items-center gap-2 text-sm cursor-pointer"><Upload size={16} /> Importar CSV</label>
         </div>
@@ -243,6 +256,19 @@ export default function Contatos() {
               <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Faturamento</label><input type="text" value={novoContato.faturamento} onChange={e => setNovoContato({...novoContato, faturamento: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
               <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Nicho</label><input type="text" value={novoContato.nicho} onChange={e => setNovoContato({...novoContato, nicho: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
               <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Tempo de Mercado</label><input type="text" value={novoContato.tempoMercado} onChange={e => setNovoContato({...novoContato, tempoMercado: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
+              
+              {/* Campos Personalizados */}
+              {camposPersonalizados.map((campo, index) => (
+                <div key={index}>
+                  <label className="text-xs text-[var(--text-secondary)] mb-1 block">{campo.nome}</label>
+                  <input
+                    type={campo.tipo === 'numero' ? 'number' : campo.tipo === 'data' ? 'date' : 'text'}
+                    value={dadosExtras[campo.nome] || ''}
+                    onChange={e => setDadosExtras(prev => ({ ...prev, [campo.nome]: e.target.value }))}
+                    className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm"
+                  />
+                </div>
+              ))}
             </div>
             <div className="flex gap-2 mt-6">
               <button onClick={() => setShowNovo(false)} className="flex-1 py-2.5 text-sm rounded-lg border border-[var(--border-color)]">Cancelar</button>
@@ -292,6 +318,9 @@ export default function Contatos() {
                 <th className="text-left p-3 text-[10px] font-medium uppercase">Email</th>
                 <th className="text-left p-3 text-[10px] font-medium uppercase">Empresa</th>
                 <th className="text-left p-3 text-[10px] font-medium uppercase">Faturamento</th>
+                {camposPersonalizados.map((campo, i) => (
+                  <th key={i} className="text-left p-3 text-[10px] font-medium uppercase">{campo.nome}</th>
+                ))}
                 <th className="text-left p-3 text-[10px] font-medium uppercase">Status</th>
                 <th className="text-left p-3 text-[10px] font-medium uppercase">WPP</th>
               </tr></thead>
@@ -308,6 +337,9 @@ export default function Contatos() {
                     <td className="p-3 text-xs">{c.email || '-'}</td>
                     <td className="p-3 text-xs">{c.empresa || '-'}</td>
                     <td className="p-3 text-xs">{c.faturamento || '-'}</td>
+                    {camposPersonalizados.map((campo, i) => (
+                      <td key={i} className="p-3 text-xs">{c.dados_extras?.[campo.nome] || '-'}</td>
+                    ))}
                     <td className="p-3"><select value={c.status} onChange={e => atualizarStatus(c.id, e.target.value)} className="text-xs px-2 py-1 rounded-full border bg-[var(--bg-tertiary)]">{statusOptions.filter(s => s.value !== 'todos').map(s => <option key={s.value} value={s.value}>{s.label}</option>)}</select></td>
                     <td className="p-3">{c.telefone ? <a href={whatsappLink(c)} target="_blank" className="whatsapp-btn text-xs"><MessageCircle size={12} /> WPP</a> : '-'}</td>
                   </tr>
@@ -339,6 +371,13 @@ export default function Contatos() {
                 {selectedContato.telefone && <p className="text-sm text-[var(--text-secondary)]"><Phone size={14} className="inline mr-2" />{formatPhone(selectedContato.telefone)}</p>}
                 {selectedContato.email && <p className="text-sm text-[var(--text-secondary)]"><Mail size={14} className="inline mr-2" />{selectedContato.email}</p>}
                 {selectedContato.empresa && <p className="text-sm text-[var(--text-secondary)]"><Building2 size={14} className="inline mr-2" />{selectedContato.empresa}</p>}
+                {camposPersonalizados.map((campo, i) => (
+                  selectedContato.dados_extras?.[campo.nome] && (
+                    <p key={i} className="text-sm text-[var(--text-secondary)]">
+                      <span className="font-medium">{campo.nome}:</span> {selectedContato.dados_extras[campo.nome]}
+                    </p>
+                  )
+                ))}
               </div>
 
               <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2"><History size={16} /> Histórico de Atividades</h3>
