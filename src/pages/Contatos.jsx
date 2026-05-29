@@ -3,8 +3,8 @@ import { Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, Buildin
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 const statusOptions = [
   { value: 'todos', label: 'Todos os status' },

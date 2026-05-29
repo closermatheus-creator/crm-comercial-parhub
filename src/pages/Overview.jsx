@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { Users, PhoneCall, MessageCircle, Calendar, CheckCircle, TrendingUp, XCircle, FileText } from 'lucide-react'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 export default function Overview() {
   const { user } = useAuth()
