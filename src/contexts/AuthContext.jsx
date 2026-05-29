@@ -3,59 +3,25 @@ import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext()
 
-function hexToRgb(hex) {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return { r, g, b }
-}
-
-function rgbToHex(r, g, b) {
-  return '#' + [r, g, b].map(x => {
-    const hex = Math.max(0, Math.min(255, Math.round(x))).toString(16)
-    return hex.length === 1 ? '0' + hex : hex
-  }).join('')
-}
-
 function aplicarCorTema(corHex) {
   const root = document.documentElement
-  const { r, g, b } = hexToRgb(corHex)
   
-  // Cor principal (brand)
+  if (!corHex) return
+  
+  // Converte hex para RGB
+  const r = parseInt(corHex.slice(1, 3), 16)
+  const g = parseInt(corHex.slice(3, 5), 16)
+  const b = parseInt(corHex.slice(5, 7), 16)
+  
+  // Cor principal
   root.style.setProperty('--brand-color', corHex)
   
-  const hoverR = Math.max(0, r - 25)
-  const hoverG = Math.max(0, g - 25)
-  const hoverB = Math.max(0, b - 25)
-  root.style.setProperty('--brand-color-hover', rgbToHex(hoverR, hoverG, hoverB))
+  // Hover (um pouco mais escuro)
+  root.style.setProperty('--brand-color-hover', `rgb(${Math.max(0, r - 25)}, ${Math.max(0, g - 25)}, ${Math.max(0, b - 25)})`)
   
+  // Texto (branco ou escuro conforme luminosidade)
   const luminosidade = (0.299 * r + 0.587 * g + 0.114 * b) / 255
   root.style.setProperty('--brand-text', luminosidade > 0.6 ? '#1E2D53' : '#ffffff')
-
-  // Aplicar fundo do tema escuro se estiver em dark mode
-  if (root.classList.contains('dark')) {
-    const bgR = Math.round(r * 0.15)
-    const bgG = Math.round(g * 0.15)
-    const bgB = Math.round(b * 0.15)
-    root.style.setProperty('--bg-primary', rgbToHex(bgR, bgG, bgB))
-    
-    const secR = Math.round(r * 0.22)
-    const secG = Math.round(g * 0.22)
-    const secB = Math.round(b * 0.22)
-    root.style.setProperty('--bg-secondary', rgbToHex(secR, secG, secB))
-    
-    const terR = Math.round(r * 0.30)
-    const terG = Math.round(g * 0.30)
-    const terB = Math.round(b * 0.30)
-    root.style.setProperty('--bg-tertiary', rgbToHex(terR, terG, terB))
-    
-    const textSecR = Math.round(r * 0.7 + 80)
-    const textSecG = Math.round(g * 0.7 + 80)
-    const textSecB = Math.round(b * 0.7 + 80)
-    root.style.setProperty('--text-secondary', rgbToHex(Math.min(255, textSecR), Math.min(255, textSecG), Math.min(255, textSecB)))
-    
-    root.style.setProperty('--border-color', `rgba(${r}, ${g}, ${b}, 0.20)`)
-  }
 }
 
 export function AuthProvider({ children }) {
