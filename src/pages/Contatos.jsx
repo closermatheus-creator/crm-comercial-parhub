@@ -21,6 +21,7 @@ export default function Contatos() {
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
   const [statusFilter, setStatusFilter] = useState('nao_abordado')
+  const [ordenacao, setOrdenacao] = useState('data')
   const [selectedContato, setSelectedContato] = useState(null)
   const [showNovo, setShowNovo] = useState(false)
   const [showPainel, setShowPainel] = useState(false)
@@ -31,7 +32,11 @@ export default function Contatos() {
   const [carregandoAtividades, setCarregandoAtividades] = useState(false)
   const fileInputRef = useRef(null)
 
-  useEffect(() => { carregarContatos() }, [user])
+  useEffect(() => { 
+    if (user?.equipeId) {
+      carregarContatos()
+    }
+  }, [user?.equipeId, ordenacao])
 
   const carregarAtividades = async (contatoId) => {
     setCarregandoAtividades(true)
@@ -45,12 +50,46 @@ export default function Contatos() {
   }
 
   const carregarContatos = async () => {
-    if (!user?.equipeId) return
-    setLoading(true)
-    const { data } = await supabase.from('contatos').select('*').eq('equipe_id', user.equipeId).order('nome')
-    const lista = (data || []).map(c => ({ ...c, status: c.status_por_usuario?.[user.uid] || c.status || 'nao_abordado' }))
-    setContatos(lista)
-    setLoading(false)
+    if (!user?.equipeId) {
+      setLoading(false)
+      return
+    }
+    
+    try {
+      setLoading(true)
+      let query = supabase.from('contatos').select('*').eq('equipe_id', user.equipeId)
+      
+      switch (ordenacao) {
+        case 'nome':
+          query = query.order('nome', { ascending: true })
+          break
+        case 'nome_desc':
+          query = query.order('nome', { ascending: false })
+          break
+        case 'data':
+          query = query.order('data_criacao', { ascending: false })
+          break
+        case 'data_antiga':
+          query = query.order('data_criacao', { ascending: true })
+          break
+        case 'status':
+          query = query.order('status')
+          break
+        default:
+          query = query.order('data_criacao', { ascending: false })
+      }
+      
+      const { data, error } = await query
+      if (error) throw error
+      
+      const lista = (data || []).map(c => ({ ...c, status: c.status_por_usuario?.[user.uid] || c.status || 'nao_abordado' }))
+      setContatos(lista)
+    } catch (err) {
+      console.error('Erro ao carregar contatos:', err)
+      setContatos([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const atualizarStatus = async (id, novoStatus) => {
@@ -60,7 +99,6 @@ export default function Contatos() {
     statusAtual[user.uid] = novoStatus
     await supabase.from('contatos').update({ status_por_usuario: statusAtual, ultimo_contato: new Date() }).eq('id', id)
     
-    // Registrar atividade
     await supabase.from('atividades').insert({
       contato_id: id,
       contato_nome: contato?.nome,
@@ -103,7 +141,6 @@ export default function Contatos() {
     })
     if (error) { toast.error('Erro ao salvar'); setSalvando(false); return }
 
-    // Registrar atividade de criação
     const { data: novo } = await supabase.from('contatos').select('id').eq('equipe_id', user.equipeId).order('data_criacao', { ascending: false }).limit(1).single()
     if (novo) {
       await supabase.from('atividades').insert({
@@ -175,13 +212,20 @@ export default function Contatos() {
       )}
 
       <div className="card p-4">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap gap-2">
+          <div className="relative flex-1 min-w-[200px]">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-            <input type="text" placeholder="Buscar..." value={busca} onChange={e => setBusca(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" />
+            <input type="text" placeholder="Buscar por nome, telefone, email ou empresa..." value={busca} onChange={e => setBusca(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" />
           </div>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm">
             {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <select value={ordenacao} onChange={e => setOrdenacao(e.target.value)} className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm">
+            <option value="nome">Nome A-Z</option>
+            <option value="nome_desc">Nome Z-A</option>
+            <option value="data">Mais recentes</option>
+            <option value="data_antiga">Mais antigos</option>
+            <option value="status">Por status</option>
           </select>
         </div>
       </div>
@@ -213,7 +257,6 @@ export default function Contatos() {
         )}
       </div>
 
-      {/* Painel lateral de atividades */}
       {showPainel && selectedContato && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/60" onClick={() => { setShowPainel(false); setSelectedContato(null) }} />
