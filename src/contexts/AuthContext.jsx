@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext()
@@ -7,50 +7,60 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const carregarUsuario = async (authUser) => {
-      try {
-        const { data: cliente } = await supabase
-          .from('clientes')
-          .select('equipe_id, role')
-          .eq('id', authUser.id)
-          .single()
+  const carregarEquipe = async (equipeId) => {
+    if (!equipeId) return null
+    const { data: eq } = await supabase
+      .from('equipes')
+      .select('*')
+      .eq('id', equipeId)
+      .single()
+    return eq
+  }
 
-        let equipe = null
-        if (cliente?.equipe_id) {
-          const { data: eq } = await supabase
-            .from('equipes')
-            .select('*')
-            .eq('id', cliente.equipe_id)
-            .single()
-          equipe = eq
-        }
+  const carregarUsuario = async (authUser) => {
+    try {
+      const { data: cliente } = await supabase
+        .from('clientes')
+        .select('equipe_id, role')
+        .eq('id', authUser.id)
+        .single()
 
-        setUser({
-          uid: authUser.id,
-          nome: authUser.user_metadata?.full_name || authUser.email,
-          email: authUser.email,
-          foto: authUser.user_metadata?.avatar_url,
-          equipeId: cliente?.equipe_id || null,
-          role: cliente?.role || 'membro',
-          equipe: equipe
-        })
-      } catch (err) {
-        console.error('Erro ao carregar usuário:', err)
-        setUser({
-          uid: authUser.id,
-          nome: authUser.user_metadata?.full_name || authUser.email,
-          email: authUser.email,
-          foto: authUser.user_metadata?.avatar_url,
-          equipeId: null,
-          role: 'membro',
-          equipe: null
-        })
-      } finally {
-        setLoading(false)
-      }
+      const equipe = await carregarEquipe(cliente?.equipe_id)
+
+      setUser({
+        uid: authUser.id,
+        nome: authUser.user_metadata?.full_name || authUser.email,
+        email: authUser.email,
+        foto: authUser.user_metadata?.avatar_url,
+        equipeId: cliente?.equipe_id || null,
+        role: cliente?.role || 'membro',
+        equipe: equipe
+      })
+    } catch (err) {
+      console.error('Erro ao carregar usuário:', err)
+      setUser({
+        uid: authUser.id,
+        nome: authUser.user_metadata?.full_name || authUser.email,
+        email: authUser.email,
+        foto: authUser.user_metadata?.avatar_url,
+        equipeId: null,
+        role: 'membro',
+        equipe: null
+      })
+    } finally {
+      setLoading(false)
     }
+  }
 
+  const recarregarEquipe = useCallback(async () => {
+    if (!user?.equipeId) return
+    const equipe = await carregarEquipe(user.equipeId)
+    if (equipe) {
+      setUser(prev => ({ ...prev, equipe }))
+    }
+  }, [user?.equipeId])
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         carregarUsuario(session.user)
@@ -88,7 +98,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, recarregarEquipe }}>
       {children}
     </AuthContext.Provider>
   )

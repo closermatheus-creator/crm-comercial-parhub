@@ -5,7 +5,7 @@ import { Copy, Check, UserPlus, UserMinus, Link2, Palette, Upload, Save } from '
 import toast from 'react-hot-toast'
 
 export default function Equipe() {
-  const { user } = useAuth()
+  const { user, recarregarEquipe } = useAuth()
   const [equipe, setEquipe] = useState(null)
   const [membros, setMembros] = useState([])
   const [loading, setLoading] = useState(true)
@@ -60,7 +60,8 @@ export default function Equipe() {
     if (error) {
       toast.error('Erro ao salvar')
     } else {
-      toast.success('Personalização salva! Recarregue a página para ver as mudanças.')
+      await recarregarEquipe()
+      toast.success('Personalização salva!')
       setEquipe(prev => ({ ...prev, ...branding }))
       setEditando(false)
     }
