@@ -23,7 +23,7 @@ export default function Sidebar() {
           {user?.equipe?.logo_url ? (
             <img src={user.equipe.logo_url} alt="Logo" className="w-10 h-10 rounded-lg object-cover" />
           ) : (
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: corPrimaria }}>
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--brand-text)] font-bold text-lg" style={{ backgroundColor: corPrimaria }}>
               {sistemaNome.charAt(0)}
             </div>
           )}
@@ -40,7 +40,6 @@ export default function Sidebar() {
             key={to}
             to={to}
             className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-            style={({ isActive }) => isActive ? { backgroundColor: corPrimaria + '20', color: corPrimaria, borderLeftColor: corPrimaria } : {}}
           >
             <Icon size={20} />
             <span>{label}</span>

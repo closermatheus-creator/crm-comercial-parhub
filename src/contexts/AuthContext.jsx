@@ -3,6 +3,30 @@ import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext()
 
+function aplicarCorTema(corHex, isDark) {
+  const root = document.documentElement
+  
+  if (corHex) {
+    // Converter hex para RGB para usar no color-mix
+    const r = parseInt(corHex.slice(1, 3), 16)
+    const g = parseInt(corHex.slice(3, 5), 16)
+    const b = parseInt(corHex.slice(5, 7), 16)
+    
+    // Escurecer para hover
+    const hoverR = Math.max(0, r - 30)
+    const hoverG = Math.max(0, g - 30)
+    const hoverB = Math.max(0, b - 30)
+    const corHover = `rgb(${hoverR}, ${hoverG}, ${hoverB})`
+    
+    root.style.setProperty('--brand-color', corHex)
+    root.style.setProperty('--brand-color-hover', corHover)
+    
+    // Texto branco se cor escura, texto escuro se cor clara
+    const luminosidade = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    root.style.setProperty('--brand-text', luminosidade > 0.6 ? '#1E2D53' : '#ffffff')
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -14,6 +38,11 @@ export function AuthProvider({ children }) {
       .select('*')
       .eq('id', equipeId)
       .single()
+    
+    if (eq?.cor_primaria) {
+      aplicarCorTema(eq.cor_primaria)
+    }
+    
     return eq
   }
 
