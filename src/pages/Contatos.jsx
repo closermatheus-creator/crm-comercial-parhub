@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, Instagram, Linkedin, Mail, History, ChevronRight, X, Shield, FileText } from 'lucide-react'import { useAuth } from '../contexts/AuthContext'
+import { Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, Instagram, Linkedin, Mail, History, ChevronRight, X, Shield, FileText } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
