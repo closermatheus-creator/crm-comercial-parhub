@@ -27,41 +27,78 @@ function DraggableCard({ contato, onStatusChange, onDelete }) {
     <div ref={setNodeRef} style={style} className="bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border-color)] hover:border-brand-500/40 transition-all shadow-sm">
       <div className="p-3">
         <div className="flex items-start gap-2">
-          <button {...listeners} {...attributes} className="cursor-grab active:cursor-grabbing text-[var(--text-secondary)] hover:text-brand-400 mt-0.5"><GripVertical size={14} /></button>
+          <button {...listeners} {...attributes} className="cursor-grab active:cursor-grabbing text-[var(--text-secondary)] hover:text-brand-400 mt-0.5">
+            <GripVertical size={14} />
+          </button>
+          
           <div className="flex-1 min-w-0">
+            {/* Tag do Facebook Ads adicionada logo acima do nome */}
+            {contato.tag === 'facebook_ads' && (
+              <div className="text-[10px] font-semibold text-purple-600 bg-purple-100 dark:bg-purple-950/40 dark:text-purple-400 rounded px-1.5 py-0.5 w-fit mb-1">
+                🔵 Facebook Lead
+              </div>
+            )}
+
             <div className="flex items-center justify-between gap-2">
-              <p className="text-[13px] font-semibold text-[var(--text-primary)] truncate">{contato.nome?.split(' ').slice(0, 2).join(' ')}</p>
+              <p className="text-[13px] font-semibold text-[var(--text-primary)] truncate">
+                {contato.nome?.split(' ').slice(0, 2).join(' ')}
+              </p>
+              
               <div className="relative">
-                <button onClick={() => setMenuOpen(!menuOpen)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1">⋮</button>
+                <button onClick={() => setMenuOpen(!menuOpen)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1">
+                  ⋮
+                </button>
+                
                 {menuOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                    <div className="absolute right-0 top-8 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg shadow-xl p-1.5 z-50 min-w-[150px]">
-                      {colunas.map(c => (
-                        <button key={c.id} onClick={() => { onStatusChange(contato.id, c.id); setMenuOpen(false) }}
-                          className={`w-full text-left px-3 py-2 text-[12px] rounded-md hover:bg-[var(--bg-tertiary)] ${c.id === contato.status ? 'text-brand-400 font-medium' : 'text-[var(--text-secondary)]'}`}>
-                          <span className={`inline-block w-2 h-2 rounded-full ${c.cor} mr-2`} />{c.titulo}
-                        </button>
-                      ))}
-                      <div className="border-t border-[var(--border-color)] my-1" />
-                      <button onClick={() => { if (confirm('Excluir?')) { onDelete(contato.id); setMenuOpen(false) } }}
-                        className="w-full text-left px-3 py-2 text-[12px] rounded-md hover:bg-red-500/10 text-red-400 flex items-center gap-2"><Trash2 size={14} />Excluir</button>
+                    <div className="absolute right-0 top-8 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg shadow-xl p-1 z-50 min-w-[150px]">
+                      <button 
+                        onClick={() => {
+                          onDelete(contato.id)
+                          setMenuOpen(false)
+                        }} 
+                        className="flex items-center gap-2 text-red-500 hover:bg-red-500/10 w-full text-left px-3 py-1.5 text-xs rounded"
+                      >
+                        <Trash2 size={12} /> Excluir Contato
+                      </button>
                     </div>
                   </>
                 )}
               </div>
             </div>
-            {contato.empresa && <p className="text-[10px] text-[var(--text-secondary)] mt-1">{contato.empresa}</p>}
+
+            {/* Informações Extras de Faturamento e Nicho Corrigidas */}
+            {(contato.faturamento || contato.nicho || contato.dados_extras) && (
+              <div className="mt-1.5 pt-1.5 border-t border-[var(--border-color)]/40 flex flex-wrap gap-1">
+                {contato.faturamento && (
+                  <span className="text-[11px] text-[var(--text-secondary)] bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded">
+                    💰 {contato.faturamento}
+                  </span>
+                )}
+                {contato.nicho && (
+                  <span className="text-[11px] text-[var(--text-secondary)] bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded">
+                    🎯 {contato.nicho}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Alertas de Tempo de Contato */}
+            <div className="flex items-center gap-2 mt-2 text-[11px] text-[var(--text-secondary)]">
+              <div className="flex items-center gap-1">
+                <Clock size={11} />
+                <span>{dias} dias sem contato</span>
+              </div>
+              {urgente && (
+                <div className="flex items-center gap-0.5 text-amber-500 font-medium animate-pulse">
+                  <AlertTriangle size={11} />
+                  <span>Urgente</span>
+                </div>
+              )}
+            </div>
+
           </div>
-        </div>
-        <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border-color)]">
-          {contato.telefone && (
-            <a href={`https://wa.me/55${contato.telefone}`} target="_blank" onClick={e => e.stopPropagation()}
-              className="text-[11px] bg-green-500/15 text-green-400 hover:bg-green-500/25 px-2 py-1 rounded-md font-medium flex items-center gap-1"><MessageCircle size={12} />WhatsApp</a>
-          )}
-          <span className={`text-[10px] font-mono flex items-center gap-1 ${urgente ? 'text-red-500' : 'text-[var(--text-secondary)]'}`}>
-            {urgente && <AlertTriangle size={10} />}<Clock size={10} />{dias}d
-          </span>
         </div>
       </div>
     </div>
@@ -73,7 +110,10 @@ function DroppableColumn({ coluna, cards, onStatusChange, onDelete }) {
   return (
     <div ref={setNodeRef} className={`card p-3 min-h-[400px] flex flex-col transition-all ${isOver ? 'border-brand-500 bg-brand-500/5' : ''}`}>
       <div className="flex items-center justify-between mb-3 px-1">
-        <div className="flex items-center gap-2"><div className={`w-2.5 h-2.5 rounded-full ${coluna.cor}`} /><h3 className="text-[11px] font-semibold uppercase">{coluna.titulo}</h3></div>
+        <div className="flex items-center gap-2">
+          <div className={`w-2.5 h-2.5 rounded-full ${coluna.cor}`} />
+          <h3 className="text-[11px] font-semibold uppercase">{coluna.titulo}</h3>
+        </div>
         <span className="text-[11px] font-mono font-bold bg-[var(--bg-tertiary)] px-2 py-1 rounded-full">{cards.length}</span>
       </div>
       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
@@ -90,6 +130,7 @@ export default function Pipeline() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { carregar() }, [user])
+  
   const carregar = async () => {
     if (!user?.equipeId) return
     const { data } = await supabase.from('contatos').select('*').eq('equipe_id', user.equipeId)
@@ -98,15 +139,27 @@ export default function Pipeline() {
   }
 
   const atualizarStatus = async (id, novoStatus) => {
-    const { data: c } = await supabase.from('contatos').select('status_por_usuario').eq('id', id).single()
-    const s = c?.status_por_usuario || {}
-    s[user.uid] = novoStatus
-    await supabase.from('contatos').update({ status_por_usuario: s, ultimo_contato: new Date() }).eq('id', id)
-    setContatos(prev => prev.map(c => c.id === id ? { ...c, status: novoStatus } : c))
-    toast.success('Status atualizado!')
+    try {
+      const { data: c } = await supabase.from('contatos').select('status_por_usuario').eq('id', id).single()
+      const s = c?.status_por_usuario || {}
+      s[user.uid] = novoStatus
+      
+      // Corrigido para salvar data compatível com Postgres TIMESTAMP
+      await supabase.from('contatos').update({ 
+        status_por_usuario: s, 
+        ultimo_contato: new Date().toISOString() 
+      }).eq('id', id)
+      
+      setContatos(prev => prev.map(c => c.id === id ? { ...c, status: novoStatus } : c))
+      toast.success('Status updated!')
+    } catch (err) {
+      console.error(err)
+      toast.error('Erro ao atualizar status')
+    }
   }
 
   const excluir = async (id) => {
+    if (!confirm('Deseja realmente excluir este contato?')) return
     await supabase.from('contatos').delete().eq('id', id)
     setContatos(prev => prev.filter(c => c.id !== id))
     toast.success('Excluído!')
@@ -122,7 +175,10 @@ export default function Pipeline() {
 
   return (
     <div className="space-y-4">
-      <div><h1 className="text-xl font-bold text-[var(--text-primary)]">Pipeline</h1><p className="text-xs text-[var(--text-secondary)]">{contatos.length} contatos</p></div>
+      <div>
+        <h1 className="text-xl font-bold text-[var(--text-primary)]">Pipeline</h1>
+        <p className="text-xs text-[var(--text-secondary)]">{contatos.length} contatos</p>
+      </div>
       <DndContext collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
         <div className="flex gap-3 overflow-x-auto pb-4">
           {colunas.map(col => (
