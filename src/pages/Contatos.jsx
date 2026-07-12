@@ -3,7 +3,7 @@ import {
   Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, 
   Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, 
   Instagram, Linkedin, Mail, History, ChevronRight, X, Shield, 
-  FileText, List, FolderPlus, Check, Trash2, Edit2 
+  FileText, List, FolderPlus, Check, Trash2, Edit2, Undo2, AlertTriangle
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -38,6 +38,8 @@ export default function Contatos() {
   const [novaListaNome, setNovaListaNome] = useState('')
   const [criandoLista, setCriandoLista] = useState(false)
   const [importando, setImportando] = useState(false)
+  const [desfazendo, setDesfazendo] = useState(false)
+  const [ultimaImportacao, setUltimaImportacao] = useState(null)
   const fileInputRef = useRef(null)
   
   const [novoContato, setNovoContato] = useState({ 
@@ -61,6 +63,25 @@ export default function Contatos() {
   const isAdmin = user?.role === 'admin'
   const camposPersonalizados = user?.camposPersonalizados || []
 
+  // Carregar última importação
+  const carregarUltimaImportacao = async () => {
+    if (!user?.equipeId) return
+    const { data } = await supabase
+      .from('importacoes_historico')
+      .select('*')
+      .eq('equipe_id', user.equipeId)
+      .eq('criado_por', user.uid)
+      .eq('status', 'concluida')
+      .order('data_importacao', { ascending: false })
+      .limit(1)
+    
+    if (data && data.length > 0) {
+      setUltimaImportacao(data[0])
+    } else {
+      setUltimaImportacao(null)
+    }
+  }
+
   // Carregar listas
   const carregarListas = async () => {
     if (!user?.equipeId) return
@@ -76,6 +97,7 @@ export default function Contatos() {
     if (user?.equipeId) {
       carregarContatos()
       carregarListas()
+      carregarUltimaImportacao()
       if (isAdmin) carregarMembros()
     }
   }, [user?.equipeId, ordenacao])
@@ -247,6 +269,41 @@ export default function Contatos() {
     }
   }
 
+  // Desfazer última importação
+  const desfazerImportacao = async () => {
+    if (!ultimaImportacao) {
+      toast.error('Nenhuma importação para desfazer')
+      return
+    }
+
+    if (!confirm(`Tem certeza que deseja desfazer a importação de "${ultimaImportacao.nome_arquivo || 'arquivo'}" com ${ultimaImportacao.total_contatos} contatos?`)) {
+      return
+    }
+
+    setDesfazendo(true)
+    try {
+      const { data, error } = await supabase.rpc('desfazer_importacao', {
+        importacao_id_param: ultimaImportacao.id
+      })
+
+      if (error) {
+        console.error('Erro ao desfazer importação:', error)
+        toast.error('Erro ao desfazer importação')
+      } else if (data?.sucesso) {
+        toast.success(data.mensagem || 'Importação desfeita com sucesso!')
+        setUltimaImportacao(null)
+        await carregarContatos()
+        await carregarListas()
+      } else {
+        toast.error(data?.mensagem || 'Erro ao desfazer importação')
+      }
+    } catch (err) {
+      console.error('Erro:', err)
+      toast.error('Erro ao desfazer importação')
+    }
+    setDesfazendo(false)
+  }
+
   const abrirNovoContato = () => {
     setNovoContato({ 
       nome: '', 
@@ -332,7 +389,6 @@ export default function Contatos() {
       return
     }
 
-    // Se não tiver lista selecionada, mostra o modal de listas
     if (!listaSelecionada) {
       setShowListas(true)
       setImportando(false)
@@ -401,7 +457,6 @@ export default function Contatos() {
             faturamento: null,
             status: 'nao_abordado',
             tag: 'csv_import',
-            lista_id: listaSelecionada,
             anotacoes: [],
             historico_interacoes: [],
             dados_extras: {}
@@ -493,26 +548,52 @@ export default function Contatos() {
           return
         }
 
-        // Inserir usando a função SQL
-        const { data, error } = await supabase.rpc('importar_contatos_com_lista', {
-          dados_json: contatosJson,
-          equipe_id_param: user.equipeId,
-          criado_por_param: user.uid
-        })
+        // Dividir em lotes de 500 para não sobrecarregar
+        const lotes = []
+        const tamanhoLote = 500
+        for (let i = 0; i < contatosJson.length; i += tamanhoLote) {
+          lotes.push(contatosJson.slice(i, i + tamanhoLote))
+        }
 
-        if (error) {
-          console.error('Erro na importação:', error)
-          toast.error('Erro ao importar contatos')
-        } else {
-          if (data?.inseridos > 0) {
-            toast.success(`${data.inseridos} contato(s) importado(s) com sucesso!`)
-            carregarContatos()
-            carregarListas()
+        let totalInseridos = 0
+        let todosErros = []
+
+        for (let loteIndex = 0; loteIndex < lotes.length; loteIndex++) {
+          const lote = lotes[loteIndex]
+          const { data, error } = await supabase.rpc('importar_contatos_com_lista', {
+            dados_json: lote,
+            equipe_id_param: user.equipeId,
+            criado_por_param: user.uid,
+            nome_arquivo_param: `${file.name} (lote ${loteIndex + 1}/${lotes.length})`,
+            lista_id_param: listaSelecionada
+          })
+
+          if (error) {
+            console.error('Erro na importação do lote:', error)
+            todosErros.push(`Lote ${loteIndex + 1}: ${error.message}`)
+          } else {
+            if (data?.inseridos > 0) {
+              totalInseridos += data.inseridos
+            }
+            if (data?.erros && data.erros.length > 0) {
+              todosErros = todosErros.concat(data.erros)
+            }
           }
-          if (data?.erros && data.erros.length > 0) {
-            console.warn('Erros na importação:', data.erros)
-            toast.error(`${data.erros.length} erro(s) encontrados. Verifique o console.`)
-          }
+
+          // Atualizar progresso
+          toast.loading(`Importando... ${Math.round(((loteIndex + 1) / lotes.length) * 100)}%`, { duration: 1000 })
+        }
+
+        if (totalInseridos > 0) {
+          toast.success(`${totalInseridos} contato(s) importado(s) com sucesso!`)
+          await carregarContatos()
+          await carregarListas()
+          await carregarUltimaImportacao()
+        }
+
+        if (todosErros.length > 0) {
+          console.warn('Erros na importação:', todosErros)
+          toast.error(`${todosErros.length} erro(s) encontrados. Verifique o console.`)
         }
       } catch (err) {
         console.error('Erro ao processar CSV:', err)
@@ -624,6 +705,16 @@ export default function Contatos() {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          {ultimaImportacao && (
+            <button 
+              onClick={desfazerImportacao}
+              disabled={desfazendo}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-all text-sm ${desfazendo ? 'opacity-50 pointer-events-none' : ''}`}
+            >
+              <Undo2 size={16} /> 
+              {desfazendo ? 'Desfazendo...' : `Desfazer (${ultimaImportacao.total_contatos})`}
+            </button>
+          )}
           <button 
             onClick={() => setShowListas(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-all text-sm"
@@ -673,7 +764,6 @@ export default function Contatos() {
               </button>
             </div>
 
-            {/* Criar nova lista */}
             <div className="mb-4">
               <div className="flex gap-2">
                 <input
@@ -694,7 +784,6 @@ export default function Contatos() {
               </div>
             </div>
 
-            {/* Lista de listas */}
             <div className="space-y-2">
               <button
                 onClick={() => {
