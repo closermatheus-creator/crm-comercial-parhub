@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, Instagram, Linkedin, Mail, History, ChevronRight, X, Shield, FileText } from 'lucide-react'
+import { 
+  Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, 
+  Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, 
+  Instagram, Linkedin, Mail, History, ChevronRight, X, Shield, 
+  FileText, List, FolderPlus, Check, Trash2, Edit2 
+} from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
@@ -27,6 +32,14 @@ export default function Contatos() {
   const [selectedContato, setSelectedContato] = useState(null)
   const [showNovo, setShowNovo] = useState(false)
   const [showPainel, setShowPainel] = useState(false)
+  const [showListas, setShowListas] = useState(false)
+  const [listaSelecionada, setListaSelecionada] = useState(null)
+  const [listas, setListas] = useState([])
+  const [novaListaNome, setNovaListaNome] = useState('')
+  const [criandoLista, setCriandoLista] = useState(false)
+  const [importando, setImportando] = useState(false)
+  const fileInputRef = useRef(null)
+  
   const [novoContato, setNovoContato] = useState({ 
     nome: '', 
     telefone: '', 
@@ -44,15 +57,25 @@ export default function Contatos() {
   const [carregandoAtividades, setCarregandoAtividades] = useState(false)
   const [membrosEquipe, setMembrosEquipe] = useState([])
   const [filtroMembro, setFiltroMembro] = useState('todos')
-  const [importando, setImportando] = useState(false)
-  const fileInputRef = useRef(null)
 
   const isAdmin = user?.role === 'admin'
   const camposPersonalizados = user?.camposPersonalizados || []
 
+  // Carregar listas
+  const carregarListas = async () => {
+    if (!user?.equipeId) return
+    const { data } = await supabase
+      .from('listas')
+      .select('*')
+      .eq('equipe_id', user.equipeId)
+      .order('criado_em', { ascending: false })
+    setListas(data || [])
+  }
+
   useEffect(() => { 
     if (user?.equipeId) {
       carregarContatos()
+      carregarListas()
       if (isAdmin) carregarMembros()
     }
   }, [user?.equipeId, ordenacao])
@@ -85,6 +108,10 @@ export default function Contatos() {
     try {
       setLoading(true)
       let query = supabase.from('contatos').select('*').eq('equipe_id', user.equipeId)
+      
+      if (listaSelecionada) {
+        query = query.eq('lista_id', listaSelecionada)
+      }
       
       if (!isAdmin) {
         query = query.eq('criado_por', user.uid)
@@ -165,6 +192,61 @@ export default function Contatos() {
     toast.success('Status atualizado!')
   }
 
+  // Criar nova lista
+  const criarLista = async () => {
+    if (!novaListaNome.trim()) {
+      toast.error('Digite um nome para a lista')
+      return
+    }
+
+    setCriandoLista(true)
+    const { data, error } = await supabase
+      .from('listas')
+      .insert({
+        nome: novaListaNome.trim(),
+        equipe_id: user.equipeId,
+        criado_por: user.uid,
+        descricao: `Lista criada em ${new Date().toLocaleDateString('pt-BR')}`
+      })
+      .select()
+      .single()
+
+    if (error) {
+      toast.error('Erro ao criar lista')
+      console.error(error)
+    } else {
+      toast.success('Lista criada!')
+      setNovaListaNome('')
+      setListaSelecionada(data.id)
+      await carregarListas()
+      setShowListas(false)
+      carregarContatos()
+    }
+    setCriandoLista(false)
+  }
+
+  // Deletar lista
+  const deletarLista = async (id) => {
+    if (!confirm('Tem certeza que deseja deletar esta lista? Os contatos não serão deletados.')) return
+    
+    const { error } = await supabase
+      .from('listas')
+      .delete()
+      .eq('id', id)
+      .eq('equipe_id', user.equipeId)
+
+    if (error) {
+      toast.error('Erro ao deletar lista')
+    } else {
+      toast.success('Lista deletada!')
+      if (listaSelecionada === id) {
+        setListaSelecionada(null)
+      }
+      await carregarListas()
+      carregarContatos()
+    }
+  }
+
   const abrirNovoContato = () => {
     setNovoContato({ 
       nome: '', 
@@ -192,7 +274,7 @@ export default function Contatos() {
     }
     setSalvando(true)
     
-    const { error } = await supabase.from('contatos').insert({
+    const contatoData = {
       nome: novoContato.nome.trim(),
       telefone: novoContato.telefone || null,
       email: novoContato.email || null,
@@ -209,32 +291,18 @@ export default function Contatos() {
       criado_por: user.uid,
       status_por_usuario: {},
       data_criacao: new Date().toISOString()
-    })
+    }
+
+    if (listaSelecionada) {
+      contatoData.lista_id = listaSelecionada
+    }
+
+    const { error } = await supabase.from('contatos').insert(contatoData)
     
     if (error) { 
       toast.error('Erro ao salvar')
       setSalvando(false)
       return 
-    }
-
-    const { data: novo } = await supabase
-      .from('contatos')
-      .select('id')
-      .eq('equipe_id', user.equipeId)
-      .order('data_criacao', { ascending: false })
-      .limit(1)
-      .single()
-    
-    if (novo) {
-      await supabase.from('atividades').insert({
-        contato_id: novo.id,
-        contato_nome: novoContato.nome.trim(),
-        equipe_id: user.equipeId,
-        tipo: 'criacao',
-        descricao: 'Contato criado',
-        criado_por: user.uid,
-        criado_em: new Date().toISOString()
-      })
     }
 
     toast.success('Contato adicionado!')
@@ -264,6 +332,18 @@ export default function Contatos() {
       return
     }
 
+    // Se não tiver lista selecionada, mostra o modal de listas
+    if (!listaSelecionada) {
+      setShowListas(true)
+      setImportando(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    processarCSV(file)
+  }
+
+  const processarCSV = async (file) => {
     setImportando(true)
     const reader = new FileReader()
 
@@ -278,10 +358,8 @@ export default function Contatos() {
           return
         }
 
-        // Parse do CSV
         const cabecalho = linhas[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
         
-        // Mapeamento de colunas
         const mapeamento = {
           'nome': 'nome',
           'name': 'nome',
@@ -323,6 +401,7 @@ export default function Contatos() {
             faturamento: null,
             status: 'nao_abordado',
             tag: 'csv_import',
+            lista_id: listaSelecionada,
             anotacoes: [],
             historico_interacoes: [],
             dados_extras: {}
@@ -415,7 +494,7 @@ export default function Contatos() {
         }
 
         // Inserir usando a função SQL
-        const { data, error } = await supabase.rpc('importar_contatos', {
+        const { data, error } = await supabase.rpc('importar_contatos_com_lista', {
           dados_json: contatosJson,
           equipe_id_param: user.equipeId,
           criado_por_param: user.uid
@@ -428,6 +507,7 @@ export default function Contatos() {
           if (data?.inseridos > 0) {
             toast.success(`${data.inseridos} contato(s) importado(s) com sucesso!`)
             carregarContatos()
+            carregarListas()
           }
           if (data?.erros && data.erros.length > 0) {
             console.warn('Erros na importação:', data.erros)
@@ -462,7 +542,8 @@ export default function Contatos() {
     doc.setFontSize(11)
     doc.text('Relatório de Contatos', 14, 26)
     doc.setFontSize(9)
-    doc.text(`Gerado em: ${dataAtual} | Total: ${contatosFiltrados.length} contatos`, 14, 32)
+    const listaNome = listas.find(l => l.id === listaSelecionada)?.nome || 'Todos os contatos'
+    doc.text(`Lista: ${listaNome} | Gerado em: ${dataAtual} | Total: ${contatosFiltrados.length} contatos`, 14, 32)
     
     const colunas = [
       'Nome', 
@@ -494,7 +575,7 @@ export default function Contatos() {
       styles: { cellPadding: 2 },
     })
     
-    doc.save(`contatos-${dataAtual.replace(/\//g, '-')}.pdf`)
+    doc.save(`contatos-${listaNome}-${dataAtual.replace(/\//g, '-')}.pdf`)
   }
 
   const contatosFiltrados = contatos.filter(c => {
@@ -519,6 +600,7 @@ export default function Contatos() {
 
   return (
     <div className="space-y-6">
+      {/* Cabeçalho */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -531,12 +613,23 @@ export default function Contatos() {
           </div>
           <p className="text-sm text-[var(--text-secondary)] mt-1">
             {loading ? 'Carregando...' : isAdmin 
-              ? `${contatosFiltrados.length} de ${contatos.length} contatos da equipe`
+              ? `${contatosFiltrados.length} de ${contatos.length} contatos`
               : `${contatosFiltrados.length} de ${contatos.length} contatos`
             }
+            {listaSelecionada && (
+              <span className="ml-2 px-2 py-0.5 bg-brand-500/10 text-brand-500 rounded-full text-xs">
+                {listas.find(l => l.id === listaSelecionada)?.nome}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <button 
+            onClick={() => setShowListas(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-all text-sm"
+          >
+            <List size={16} /> Listas
+          </button>
           <button 
             onClick={abrirNovoContato} 
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"
@@ -566,6 +659,112 @@ export default function Contatos() {
         </div>
       </div>
 
+      {/* Modal de Listas */}
+      {showListas && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowListas(false)} />
+          <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-6 w-full max-w-md shadow-2xl z-10 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                <List size={20} /> Gerenciar Listas
+              </h2>
+              <button onClick={() => setShowListas(false)} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Criar nova lista */}
+            <div className="mb-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Nome da nova lista..."
+                  value={novaListaNome}
+                  onChange={(e) => setNovaListaNome(e.target.value)}
+                  className="flex-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm"
+                  onKeyPress={(e) => e.key === 'Enter' && criarLista()}
+                />
+                <button
+                  onClick={criarLista}
+                  disabled={criandoLista}
+                  className="px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 text-sm disabled:opacity-50"
+                >
+                  <FolderPlus size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Lista de listas */}
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  setListaSelecionada(null)
+                  setShowListas(false)
+                  carregarContatos()
+                }}
+                className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${
+                  !listaSelecionada ? 'bg-brand-500/10 border-2 border-brand-500' : 'hover:bg-[var(--bg-tertiary)]'
+                }`}
+              >
+                <span className="text-sm font-medium">Todos os contatos</span>
+                {!listaSelecionada && <Check size={16} className="text-brand-500" />}
+              </button>
+
+              {listas.map(lista => (
+                <div
+                  key={lista.id}
+                  className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+                    listaSelecionada === lista.id ? 'bg-brand-500/10 border-2 border-brand-500' : 'hover:bg-[var(--bg-tertiary)]'
+                  }`}
+                >
+                  <button
+                    onClick={() => {
+                      setListaSelecionada(lista.id)
+                      setShowListas(false)
+                      carregarContatos()
+                    }}
+                    className="flex-1 text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{lista.nome}</span>
+                      <span className="text-xs text-[var(--text-secondary)]">
+                        ({lista.contatos_count || 0} contatos)
+                      </span>
+                    </div>
+                    {lista.descricao && (
+                      <p className="text-xs text-[var(--text-secondary)] truncate">{lista.descricao}</p>
+                    )}
+                  </button>
+                  <div className="flex items-center gap-1">
+                    {listaSelecionada === lista.id && (
+                      <Check size={16} className="text-brand-500" />
+                    )}
+                    <button
+                      onClick={() => deletarLista(lista.id)}
+                      className="p-1 rounded hover:bg-red-500/10 text-red-500"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {listas.length === 0 && (
+                <p className="text-center text-sm text-[var(--text-secondary)] py-4">
+                  Nenhuma lista criada ainda.
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
+              <p className="text-xs text-[var(--text-secondary)]">
+                Ao importar um CSV, os contatos serão adicionados à lista selecionada.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal Novo Contato */}
       {showNovo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -577,6 +776,13 @@ export default function Contatos() {
                 <X size={20} />
               </button>
             </div>
+            {listaSelecionada && (
+              <p className="text-xs text-[var(--text-secondary)] mb-4">
+                Adicionando à lista: <span className="text-brand-500 font-medium">
+                  {listas.find(l => l.id === listaSelecionada)?.nome}
+                </span>
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-[var(--text-secondary)] mb-1 block">Nome *</label>
@@ -751,7 +957,15 @@ export default function Contatos() {
         ) : contatos.length === 0 ? (
           <div className="p-12 text-center">
             <UserPlus size={28} className="mx-auto mb-3 text-[var(--text-secondary)]" />
-            <p className="text-sm">Nenhum contato. Cadastre ou importe.</p>
+            <p className="text-sm">Nenhum contato nesta lista.</p>
+            {listaSelecionada && (
+              <button 
+                onClick={() => setShowListas(true)}
+                className="mt-2 text-xs text-brand-500 hover:underline"
+              >
+                Mudar de lista ou importar contatos
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
