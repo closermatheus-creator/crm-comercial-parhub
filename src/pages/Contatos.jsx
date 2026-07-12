@@ -27,7 +27,17 @@ export default function Contatos() {
   const [selectedContato, setSelectedContato] = useState(null)
   const [showNovo, setShowNovo] = useState(false)
   const [showPainel, setShowPainel] = useState(false)
-  const [novoContato, setNovoContato] = useState({ nome: '', telefone: '', email: '', empresa: '', instagram: '', linkedin: '', faturamento: '', nicho: '', tempoMercado: '' })
+  const [novoContato, setNovoContato] = useState({ 
+    nome: '', 
+    telefone: '', 
+    email: '', 
+    empresa: '', 
+    instagram: '', 
+    linkedin: '', 
+    faturamento: '', 
+    nicho: '', 
+    tempoMercado: '' 
+  })
   const [dadosExtras, setDadosExtras] = useState({})
   const [salvando, setSalvando] = useState(false)
   const [atividades, setAtividades] = useState([])
@@ -103,7 +113,10 @@ export default function Contatos() {
       const { data, error } = await query
       if (error) throw error
       
-      const lista = (data || []).map(c => ({ ...c, status: c.status_por_usuario?.[user.uid] || c.status || 'nao_abordado' }))
+      const lista = (data || []).map(c => ({ 
+        ...c, 
+        status: c.status_por_usuario?.[user.uid] || c.status || 'nao_abordado' 
+      }))
       setContatos(lista)
     } catch (err) {
       console.error('Erro ao carregar contatos:', err)
@@ -114,11 +127,23 @@ export default function Contatos() {
   }
 
   const atualizarStatus = async (id, novoStatus) => {
-    const { data: contato } = await supabase.from('contatos').select('status_por_usuario,nome').eq('id', id).single()
+    const { data: contato } = await supabase
+      .from('contatos')
+      .select('status_por_usuario,nome')
+      .eq('id', id)
+      .single()
+    
     const statusAtual = contato?.status_por_usuario || {}
     const statusAntigo = statusAtual[user.uid] || 'nao_abordado'
     statusAtual[user.uid] = novoStatus
-    await supabase.from('contatos').update({ status_por_usuario: statusAtual, ultimo_contato: new Date() }).eq('id', id)
+    
+    await supabase
+      .from('contatos')
+      .update({ 
+        status_por_usuario: statusAtual, 
+        ultimo_contato: new Date().toISOString() 
+      })
+      .eq('id', id)
     
     await supabase.from('atividades').insert({
       contato_id: id,
@@ -129,7 +154,7 @@ export default function Contatos() {
       status_anterior: statusAntigo,
       status_novo: novoStatus,
       criado_por: user.uid,
-      criado_em: new Date()
+      criado_em: new Date().toISOString()
     })
     
     setContatos(prev => prev.map(c => c.id === id ? { ...c, status: novoStatus } : c))
@@ -141,7 +166,17 @@ export default function Contatos() {
   }
 
   const abrirNovoContato = () => {
-    setNovoContato({ nome: '', telefone: '', email: '', empresa: '', instagram: '', linkedin: '', faturamento: '', nicho: '', tempoMercado: '' })
+    setNovoContato({ 
+      nome: '', 
+      telefone: '', 
+      email: '', 
+      empresa: '', 
+      instagram: '', 
+      linkedin: '', 
+      faturamento: '', 
+      nicho: '', 
+      tempoMercado: '' 
+    })
     const extrasIniciais = {}
     camposPersonalizados.forEach(campo => {
       extrasIniciais[campo.nome] = ''
@@ -151,8 +186,12 @@ export default function Contatos() {
   }
 
   const handleSalvar = async () => {
-    if (!novoContato.nome.trim()) { toast.error('Nome é obrigatório'); return }
+    if (!novoContato.nome.trim()) { 
+      toast.error('Nome é obrigatório')
+      return 
+    }
     setSalvando(true)
+    
     const { error } = await supabase.from('contatos').insert({
       nome: novoContato.nome.trim(),
       telefone: novoContato.telefone || null,
@@ -171,9 +210,21 @@ export default function Contatos() {
       status_por_usuario: {},
       data_criacao: new Date().toISOString()
     })
-    if (error) { toast.error('Erro ao salvar'); setSalvando(false); return }
+    
+    if (error) { 
+      toast.error('Erro ao salvar')
+      setSalvando(false)
+      return 
+    }
 
-    const { data: novo } = await supabase.from('contatos').select('id').eq('equipe_id', user.equipeId).order('data_criacao', { ascending: false }).limit(1).single()
+    const { data: novo } = await supabase
+      .from('contatos')
+      .select('id')
+      .eq('equipe_id', user.equipeId)
+      .order('data_criacao', { ascending: false })
+      .limit(1)
+      .single()
+    
     if (novo) {
       await supabase.from('atividades').insert({
         contato_id: novo.id,
@@ -182,12 +233,22 @@ export default function Contatos() {
         tipo: 'criacao',
         descricao: 'Contato criado',
         criado_por: user.uid,
-        criado_em: new Date()
+        criado_em: new Date().toISOString()
       })
     }
 
     toast.success('Contato adicionado!')
-    setNovoContato({ nome: '', telefone: '', email: '', empresa: '', instagram: '', linkedin: '', faturamento: '', nicho: '', tempoMercado: '' })
+    setNovoContato({ 
+      nome: '', 
+      telefone: '', 
+      email: '', 
+      empresa: '', 
+      instagram: '', 
+      linkedin: '', 
+      faturamento: '', 
+      nicho: '', 
+      tempoMercado: '' 
+    })
     setDadosExtras({})
     setShowNovo(false)
     setSalvando(false)
@@ -217,34 +278,36 @@ export default function Contatos() {
           return
         }
 
-        // Extrair cabeçalho (primeira linha)
+        // Parse do CSV
         const cabecalho = linhas[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
-
-        // Mapear colunas do CSV para campos do banco
+        
+        // Mapeamento de colunas
         const mapeamento = {
           'nome': 'nome',
           'name': 'nome',
-          'telefone': 'telefone',
+          'instagram': 'instagram',
+          'etapa': 'etapa',
+          'classificação': 'classificacao',
+          'classificacao': 'classificacao',
+          'whatsapp': 'telefone',
           'phone': 'telefone',
           'celular': 'telefone',
-          'whatsapp': 'telefone',
-          'email': 'email',
-          'e-mail': 'email',
+          'telefone': 'telefone',
+          'formulário': 'formulario',
+          'formulario': 'formulario',
+          'calendy': 'calendy',
+          'faturamento': 'faturamento',
+          'dor': 'dor',
+          'data': 'data',
+          'sdr': 'sdr',
           'empresa': 'empresa',
           'company': 'empresa',
-          'instagram': 'instagram',
-          'linkedin': 'linkedin',
-          'faturamento': 'faturamento',
-          'nicho': 'nicho',
-          'tempo_mercado': 'tempoMercado',
-          'tempo de mercado': 'tempoMercado',
-          'tag': 'tag',
-          'status': 'status',
-          'observacoes': 'observacoes'
+          'email': 'email',
+          'e-mail': 'email',
+          'status': 'status'
         }
 
-        const contatosInserir = []
-        const erros = []
+        const contatosJson = []
 
         for (let i = 1; i < linhas.length; i++) {
           const valores = linhas[i].split(',').map(v => v.trim().replace(/"/g, ''))
@@ -252,12 +315,16 @@ export default function Contatos() {
           if (valores.length === 0 || (valores.length === 1 && !valores[0])) continue
 
           const contato = {
-            equipe_id: user.equipeId,
-            criado_por: user.uid,
-            status_por_usuario: {},
-            data_criacao: new Date().toISOString(),
-            tag: 'csv_import',
+            nome: '',
+            telefone: null,
+            email: null,
+            empresa: null,
+            instagram: null,
+            faturamento: null,
             status: 'nao_abordado',
+            tag: 'csv_import',
+            anotacoes: [],
+            historico_interacoes: [],
             dados_extras: {}
           }
 
@@ -265,63 +332,106 @@ export default function Contatos() {
             const valor = valores[index] || ''
             const campo = mapeamento[col]
 
-            if (campo && valor) {
-              if (['nome', 'telefone', 'email', 'empresa', 'instagram', 'linkedin', 'faturamento', 'nicho'].includes(campo)) {
-                contato[campo] = valor
-              } else if (campo === 'tempoMercado') {
-                contato.tempo_mercado = valor
-              } else if (campo === 'tag') {
-                contato.tag = valor
-              } else if (campo === 'status') {
-                const statusValido = statusOptions.find(s => s.value === valor.toLowerCase() || s.label.toLowerCase() === valor.toLowerCase())
-                contato.status = statusValido ? statusValido.value : 'nao_abordado'
-              } else {
-                contato.dados_extras[col] = valor
+            if (!campo) {
+              contato.dados_extras[col] = valor
+              return
+            }
+
+            if (campo === 'nome') {
+              contato.nome = valor
+            } else if (campo === 'telefone') {
+              let telefone = valor
+                .replace(/\+55/g, '')
+                .replace(/[\(\)\-\s]/g, '')
+                .replace(/^0+/, '')
+              if (telefone) contato.telefone = telefone
+            } else if (campo === 'email') {
+              if (valor.includes('@')) contato.email = valor
+            } else if (campo === 'empresa') {
+              contato.empresa = valor
+            } else if (campo === 'instagram') {
+              if (valor && !valor.includes('@')) {
+                contato.instagram = '@' + valor
+              } else if (valor) {
+                contato.instagram = valor
               }
+            } else if (campo === 'faturamento') {
+              if (valor && !valor.toLowerCase().includes('nao')) {
+                contato.faturamento = valor
+              }
+            } else if (campo === 'status') {
+              const statusMap = {
+                'rup confirmacao': 'respondeu',
+                'proposta enviada': 'proposta',
+                'fechamento futuro': 'fechou',
+                'cadência 02': 'abordado',
+                'cadência 03': 'abordado',
+                'cadência 04': 'abordado',
+                'cadência 55': 'abordado',
+                'cancelou': 'perdeu',
+                'no show': 'perdeu',
+                'periodo': 'nao_abordado',
+                'perido': 'nao_abordado',
+                'gorho': 'abordado',
+                'sql': 'respondeu',
+                'sq': 'respondeu',
+                'sq i': 'respondeu',
+                'mol': 'abordado',
+                's2c': 'respondeu',
+                'desqualificado': 'perdeu'
+              }
+              const statusLower = valor.toLowerCase()
+              contato.status = statusMap[statusLower] || 'nao_abordado'
+            } else if (campo === 'etapa') {
+              contato.dados_extras.etapa = valor
+            } else if (campo === 'classificacao') {
+              contato.dados_extras.classificacao = valor
+            } else if (campo === 'formulario') {
+              contato.dados_extras.formulario = valor
+            } else if (campo === 'calendy') {
+              contato.dados_extras.calendy = valor
+            } else if (campo === 'dor') {
+              contato.dados_extras.dor = valor
+            } else if (campo === 'sdr') {
+              contato.dados_extras.sdr = valor
+            } else if (campo === 'data') {
+              contato.dados_extras.data = valor
             }
           })
 
           if (!contato.nome || !contato.nome.trim()) {
-            erros.push(`Linha ${i + 1}: nome é obrigatório`)
+            console.warn(`Linha ${i + 1}: nome é obrigatório`)
             continue
           }
 
-          contatosInserir.push(contato)
+          contato.nome = contato.nome.trim()
+          contatosJson.push(contato)
         }
 
-        if (contatosInserir.length === 0) {
+        if (contatosJson.length === 0) {
           toast.error('Nenhum contato válido encontrado no arquivo')
           setImportando(false)
           return
         }
 
-        // Inserir em lotes de 50
-        const lote = 50
-        let inseridos = 0
+        // Inserir usando a função SQL
+        const { data, error } = await supabase.rpc('importar_contatos', {
+          dados_json: contatosJson,
+          equipe_id_param: user.equipeId,
+          criado_por_param: user.uid
+        })
 
-        for (let i = 0; i < contatosInserir.length; i += lote) {
-          const loteContatos = contatosInserir.slice(i, i + lote)
-          const { error } = await supabase.from('contatos').insert(loteContatos)
-          
-          if (error) {
-            console.error('Erro ao importar lote:', error)
-            erros.push(`Erro ao importar lote ${i / lote + 1}`)
-          } else {
-            inseridos += loteContatos.length
+        if (error) {
+          console.error('Erro na importação:', error)
+          toast.error('Erro ao importar contatos')
+        } else {
+          if (data?.inseridos > 0) {
+            toast.success(`${data.inseridos} contato(s) importado(s) com sucesso!`)
+            carregarContatos()
           }
-        }
-
-        if (inseridos > 0) {
-          toast.success(`${inseridos} contato(s) importado(s) com sucesso!`)
-          carregarContatos()
-        }
-
-        if (erros.length > 0) {
-          console.warn('Erros na importação:', erros)
-          if (erros.length <= 5) {
-            erros.forEach(e => toast.error(e))
-          } else {
-            toast.error(`${erros.length} erros encontrados. Verifique o console.`)
+          if (data?.erros && data.erros.length > 0) {
+            console.warn('Erros na importação:', data.erros)
+            toast.error(`${data.erros.length} erro(s) encontrados. Verifique o console.`)
           }
         }
       } catch (err) {
@@ -409,7 +519,7 @@ export default function Contatos() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-[var(--text-primary)]">Contatos</h1>
@@ -426,34 +536,134 @@ export default function Contatos() {
             }
           </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={abrirNovoContato} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"><Plus size={16} /> Novo Contato</button>
-          <button onClick={exportarPDF} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-all text-sm"><FileText size={16} /> Exportar PDF</button>
-          <input ref={fileInputRef} type="file" accept=".csv" onChange={handleImportarCSV} className="hidden" id="csv-upload" />
-          <label htmlFor="csv-upload" className={`btn-primary flex items-center gap-2 text-sm cursor-pointer ${importando ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className="flex gap-2 flex-wrap">
+          <button 
+            onClick={abrirNovoContato} 
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"
+          >
+            <Plus size={16} /> Novo Contato
+          </button>
+          <button 
+            onClick={exportarPDF} 
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-all text-sm"
+          >
+            <FileText size={16} /> Exportar PDF
+          </button>
+          <input 
+            ref={fileInputRef} 
+            type="file" 
+            accept=".csv" 
+            onChange={handleImportarCSV} 
+            className="hidden" 
+            id="csv-upload" 
+          />
+          <label 
+            htmlFor="csv-upload" 
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-all text-sm cursor-pointer ${importando ? 'opacity-50 pointer-events-none' : ''}`}
+          >
             <Upload size={16} /> {importando ? 'Importando...' : 'Importar CSV'}
           </label>
         </div>
       </div>
 
+      {/* Modal Novo Contato */}
       {showNovo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowNovo(false)} />
           <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-6 w-full max-w-lg shadow-2xl z-10 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-[var(--text-primary)]">Novo Contato</h2>
-              <button onClick={() => setShowNovo(false)} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]"><X size={20} /></button>
+              <button onClick={() => setShowNovo(false)} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]">
+                <X size={20} />
+              </button>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Nome *</label><input type="text" value={novoContato.nome} onChange={e => setNovoContato({...novoContato, nome: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" autoFocus /></div>
-              <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Telefone</label><input type="text" value={novoContato.telefone} onChange={e => setNovoContato({...novoContato, telefone: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm font-mono" /></div>
-              <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Email</label><input type="email" value={novoContato.email} onChange={e => setNovoContato({...novoContato, email: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
-              <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Empresa</label><input type="text" value={novoContato.empresa} onChange={e => setNovoContato({...novoContato, empresa: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
-              <div><label className="text-xs text-[var(--text-secondary)] mb-1 block"><Instagram size={12} className="inline" /> Instagram</label><input type="text" value={novoContato.instagram} onChange={e => setNovoContato({...novoContato, instagram: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
-              <div><label className="text-xs text-[var(--text-secondary)] mb-1 block"><Linkedin size={12} className="inline" /> LinkedIn</label><input type="text" value={novoContato.linkedin} onChange={e => setNovoContato({...novoContato, linkedin: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
-              <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Faturamento</label><input type="text" value={novoContato.faturamento} onChange={e => setNovoContato({...novoContato, faturamento: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
-              <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Nicho</label><input type="text" value={novoContato.nicho} onChange={e => setNovoContato({...novoContato, nicho: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
-              <div><label className="text-xs text-[var(--text-secondary)] mb-1 block">Tempo de Mercado</label><input type="text" value={novoContato.tempoMercado} onChange={e => setNovoContato({...novoContato, tempoMercado: e.target.value})} className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" /></div>
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Nome *</label>
+                <input 
+                  type="text" 
+                  value={novoContato.nome} 
+                  onChange={e => setNovoContato({...novoContato, nome: e.target.value})} 
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" 
+                  autoFocus 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Telefone</label>
+                <input 
+                  type="text" 
+                  value={novoContato.telefone} 
+                  onChange={e => setNovoContato({...novoContato, telefone: e.target.value})} 
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm font-mono" 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Email</label>
+                <input 
+                  type="email" 
+                  value={novoContato.email} 
+                  onChange={e => setNovoContato({...novoContato, email: e.target.value})} 
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Empresa</label>
+                <input 
+                  type="text" 
+                  value={novoContato.empresa} 
+                  onChange={e => setNovoContato({...novoContato, empresa: e.target.value})} 
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1 block">
+                  <Instagram size={12} className="inline" /> Instagram
+                </label>
+                <input 
+                  type="text" 
+                  value={novoContato.instagram} 
+                  onChange={e => setNovoContato({...novoContato, instagram: e.target.value})} 
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1 block">
+                  <Linkedin size={12} className="inline" /> LinkedIn
+                </label>
+                <input 
+                  type="text" 
+                  value={novoContato.linkedin} 
+                  onChange={e => setNovoContato({...novoContato, linkedin: e.target.value})} 
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Faturamento</label>
+                <input 
+                  type="text" 
+                  value={novoContato.faturamento} 
+                  onChange={e => setNovoContato({...novoContato, faturamento: e.target.value})} 
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Nicho</label>
+                <input 
+                  type="text" 
+                  value={novoContato.nicho} 
+                  onChange={e => setNovoContato({...novoContato, nicho: e.target.value})} 
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--text-secondary)] mb-1 block">Tempo de Mercado</label>
+                <input 
+                  type="text" 
+                  value={novoContato.tempoMercado} 
+                  onChange={e => setNovoContato({...novoContato, tempoMercado: e.target.value})} 
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" 
+                />
+              </div>
               
               {camposPersonalizados.map((campo, index) => (
                 <div key={index}>
@@ -468,31 +678,61 @@ export default function Contatos() {
               ))}
             </div>
             <div className="flex gap-2 mt-6">
-              <button onClick={() => setShowNovo(false)} className="flex-1 py-2.5 text-sm rounded-lg border border-[var(--border-color)]">Cancelar</button>
-              <button onClick={handleSalvar} disabled={salvando || !novoContato.nome.trim()} className="flex-1 btn-primary text-sm disabled:opacity-50">{salvando ? 'Salvando...' : 'Salvar'}</button>
+              <button 
+                onClick={() => setShowNovo(false)} 
+                className="flex-1 py-2.5 text-sm rounded-lg border border-[var(--border-color)]"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleSalvar} 
+                disabled={salvando || !novoContato.nome.trim()} 
+                className="flex-1 btn-primary text-sm disabled:opacity-50"
+              >
+                {salvando ? 'Salvando...' : 'Salvar'}
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Filtros */}
       <div className="card p-4">
         <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-[200px]">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-            <input type="text" placeholder="Buscar por nome, telefone, email ou empresa..." value={busca} onChange={e => setBusca(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" />
+            <input 
+              type="text" 
+              placeholder="Buscar por nome, telefone, email ou empresa..." 
+              value={busca} 
+              onChange={e => setBusca(e.target.value)} 
+              className="w-full pl-9 pr-4 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm" 
+            />
           </div>
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm">
+          <select 
+            value={statusFilter} 
+            onChange={e => setStatusFilter(e.target.value)} 
+            className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm"
+          >
             {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           {isAdmin && membrosEquipe.length > 0 && (
-            <select value={filtroMembro} onChange={e => setFiltroMembro(e.target.value)} className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm">
+            <select 
+              value={filtroMembro} 
+              onChange={e => setFiltroMembro(e.target.value)} 
+              className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm"
+            >
               <option value="todos">Todos os membros</option>
               {membrosEquipe.map(m => (
                 <option key={m.id} value={m.id}>{m.nome}</option>
               ))}
             </select>
           )}
-          <select value={ordenacao} onChange={e => setOrdenacao(e.target.value)} className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm">
+          <select 
+            value={ordenacao} 
+            onChange={e => setOrdenacao(e.target.value)} 
+            className="px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm"
+          >
             <option value="nome">Nome A-Z</option>
             <option value="nome_desc">Nome Z-A</option>
             <option value="data">Mais recentes</option>
@@ -502,29 +742,50 @@ export default function Contatos() {
         </div>
       </div>
 
+      {/* Tabela de Contatos */}
       <div className="card overflow-hidden">
-        {loading ? <div className="p-12 text-center"><div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" /></div> : contatos.length === 0 ? (
-          <div className="p-12 text-center"><UserPlus size={28} className="mx-auto mb-3 text-[var(--text-secondary)]" /><p className="text-sm">Nenhum contato. Cadastre ou importe.</p></div>
+        {loading ? (
+          <div className="p-12 text-center">
+            <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          </div>
+        ) : contatos.length === 0 ? (
+          <div className="p-12 text-center">
+            <UserPlus size={28} className="mx-auto mb-3 text-[var(--text-secondary)]" />
+            <p className="text-sm">Nenhum contato. Cadastre ou importe.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead><tr className="border-b border-[var(--border-color)]">
-                <th className="text-left p-3 text-[10px] font-medium uppercase">Nome</th>
-                {isAdmin && <th className="text-left p-3 text-[10px] font-medium uppercase">Dono</th>}
-                <th className="text-left p-3 text-[10px] font-medium uppercase">Telefone</th>
-                <th className="text-left p-3 text-[10px] font-medium uppercase">Email</th>
-                <th className="text-left p-3 text-[10px] font-medium uppercase">Empresa</th>
-                <th className="text-left p-3 text-[10px] font-medium uppercase">Faturamento</th>
-                {camposPersonalizados.map((campo, i) => (
-                  <th key={i} className="text-left p-3 text-[10px] font-medium uppercase">{campo.nome}</th>
-                ))}
-                <th className="text-left p-3 text-[10px] font-medium uppercase">Status</th>
-                <th className="text-left p-3 text-[10px] font-medium uppercase">WPP</th>
-              </tr></thead>
+              <thead>
+                <tr className="border-b border-[var(--border-color)]">
+                  <th className="text-left p-3 text-[10px] font-medium uppercase">Nome</th>
+                  {isAdmin && <th className="text-left p-3 text-[10px] font-medium uppercase">Dono</th>}
+                  <th className="text-left p-3 text-[10px] font-medium uppercase">Telefone</th>
+                  <th className="text-left p-3 text-[10px] font-medium uppercase">Email</th>
+                  <th className="text-left p-3 text-[10px] font-medium uppercase">Empresa</th>
+                  <th className="text-left p-3 text-[10px] font-medium uppercase">Faturamento</th>
+                  {camposPersonalizados.map((campo, i) => (
+                    <th key={i} className="text-left p-3 text-[10px] font-medium uppercase">{campo.nome}</th>
+                  ))}
+                  <th className="text-left p-3 text-[10px] font-medium uppercase">Status</th>
+                  <th className="text-left p-3 text-[10px] font-medium uppercase">WPP</th>
+                </tr>
+              </thead>
               <tbody>
                 {contatosFiltrados.map(c => (
                   <tr key={c.id} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-tertiary)]/50">
-                    <td className="p-3"><button onClick={() => { setSelectedContato(c); setShowPainel(true); carregarAtividades(c.id) }} className="text-left hover:text-brand-500 text-sm font-medium">{c.nome}</button></td>
+                    <td className="p-3">
+                      <button 
+                        onClick={() => { 
+                          setSelectedContato(c)
+                          setShowPainel(true)
+                          carregarAtividades(c.id)
+                        }} 
+                        className="text-left hover:text-brand-500 text-sm font-medium"
+                      >
+                        {c.nome}
+                      </button>
+                    </td>
                     {isAdmin && (
                       <td className="p-3 text-xs text-[var(--text-secondary)]">
                         {c.criado_por === user.uid ? 'Você' : getMembroNome(c.criado_por) || '-'}
@@ -537,8 +798,24 @@ export default function Contatos() {
                     {camposPersonalizados.map((campo, i) => (
                       <td key={i} className="p-3 text-xs">{c.dados_extras?.[campo.nome] || '-'}</td>
                     ))}
-                    <td className="p-3"><select value={c.status} onChange={e => atualizarStatus(c.id, e.target.value)} className="text-xs px-2 py-1 rounded-full border bg-[var(--bg-tertiary)]">{statusOptions.filter(s => s.value !== 'todos').map(s => <option key={s.value} value={s.value}>{s.label}</option>)}</select></td>
-                    <td className="p-3">{c.telefone ? <a href={whatsappLink(c)} target="_blank" className="whatsapp-btn text-xs"><MessageCircle size={12} /> WPP</a> : '-'}</td>
+                    <td className="p-3">
+                      <select 
+                        value={c.status} 
+                        onChange={e => atualizarStatus(c.id, e.target.value)} 
+                        className="text-xs px-2 py-1 rounded-full border bg-[var(--bg-tertiary)]"
+                      >
+                        {statusOptions.filter(s => s.value !== 'todos').map(s => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="p-3">
+                      {c.telefone ? (
+                        <a href={whatsappLink(c)} target="_blank" className="whatsapp-btn text-xs">
+                          <MessageCircle size={12} /> WPP
+                        </a>
+                      ) : '-'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -547,9 +824,13 @@ export default function Contatos() {
         )}
       </div>
 
+      {/* Painel Lateral de Detalhes */}
       {showPainel && selectedContato && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/60" onClick={() => { setShowPainel(false); setSelectedContato(null) }} />
+          <div className="absolute inset-0 bg-black/60" onClick={() => { 
+            setShowPainel(false)
+            setSelectedContato(null)
+          }} />
           <div className="relative bg-[var(--bg-secondary)] border-l border-[var(--border-color)] w-full max-w-md shadow-2xl z-10 h-full overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
@@ -561,13 +842,33 @@ export default function Contatos() {
                     </p>
                   )}
                 </div>
-                <button onClick={() => { setShowPainel(false); setSelectedContato(null) }} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]"><X size={20} /></button>
+                <button onClick={() => { 
+                  setShowPainel(false)
+                  setSelectedContato(null)
+                }} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]">
+                  <X size={20} />
+                </button>
               </div>
               
               <div className="space-y-3 mb-6">
-                {selectedContato.telefone && <p className="text-sm text-[var(--text-secondary)]"><Phone size={14} className="inline mr-2" />{formatPhone(selectedContato.telefone)}</p>}
-                {selectedContato.email && <p className="text-sm text-[var(--text-secondary)]"><Mail size={14} className="inline mr-2" />{selectedContato.email}</p>}
-                {selectedContato.empresa && <p className="text-sm text-[var(--text-secondary)]"><Building2 size={14} className="inline mr-2" />{selectedContato.empresa}</p>}
+                {selectedContato.telefone && (
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    <Phone size={14} className="inline mr-2" />
+                    {formatPhone(selectedContato.telefone)}
+                  </p>
+                )}
+                {selectedContato.email && (
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    <Mail size={14} className="inline mr-2" />
+                    {selectedContato.email}
+                  </p>
+                )}
+                {selectedContato.empresa && (
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    <Building2 size={14} className="inline mr-2" />
+                    {selectedContato.empresa}
+                  </p>
+                )}
                 {camposPersonalizados.map((campo, i) => (
                   selectedContato.dados_extras?.[campo.nome] && (
                     <p key={i} className="text-sm text-[var(--text-secondary)]">
@@ -577,10 +878,14 @@ export default function Contatos() {
                 ))}
               </div>
 
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2"><History size={16} /> Histórico de Atividades</h3>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
+                <History size={16} /> Histórico de Atividades
+              </h3>
               
               {carregandoAtividades ? (
-                <div className="text-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" /></div>
+                <div className="text-center py-8">
+                  <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                </div>
               ) : atividades.length === 0 ? (
                 <p className="text-sm text-[var(--text-secondary)] text-center py-8">Nenhuma atividade registrada</p>
               ) : (
@@ -590,7 +895,9 @@ export default function Contatos() {
                       <div className="w-2 h-2 rounded-full bg-brand-500 mt-1.5 shrink-0" />
                       <div>
                         <p className="text-sm text-[var(--text-primary)]">{a.descricao}</p>
-                        <p className="text-xs text-[var(--text-secondary)] mt-1">{new Date(a.criado_em).toLocaleString('pt-BR')}</p>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1">
+                          {new Date(a.criado_em).toLocaleString('pt-BR')}
+                        </p>
                       </div>
                     </div>
                   ))}

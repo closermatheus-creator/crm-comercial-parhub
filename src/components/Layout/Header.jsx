@@ -15,7 +15,6 @@ export default function Header() {
   const inputRef = useRef(null)
   const dropdownRef = useRef(null)
 
-  // Buscar contatos ao digitar
   useEffect(() => {
     if (busca.trim().length < 2) {
       setResultados([])
@@ -37,7 +36,6 @@ export default function Header() {
     return () => clearTimeout(timer)
   }, [busca, user?.equipeId])
 
-  // Atalho Ctrl+K para abrir busca
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -54,7 +52,6 @@ export default function Header() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // Fechar dropdown ao clicar fora
   useEffect(() => {
     const handleClick = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target) && !inputRef.current?.contains(e.target)) {
@@ -67,7 +64,6 @@ export default function Header() {
 
   return (
     <header className="h-16 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center justify-between px-6 fixed top-0 left-64 right-0 z-20">
-      {/* Busca global */}
       <div className="relative flex-1 max-w-md" ref={dropdownRef}>
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
@@ -90,7 +86,6 @@ export default function Header() {
           )}
         </div>
 
-        {/* Dropdown de resultados */}
         {showBusca && busca.trim().length >= 2 && (
           <div className="absolute top-full mt-2 w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl shadow-2xl overflow-hidden z-50">
             {resultados.length === 0 ? (
