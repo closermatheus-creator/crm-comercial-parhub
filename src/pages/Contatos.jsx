@@ -4,7 +4,7 @@ import {
   Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, 
   Instagram, Linkedin, Mail, History, ChevronRight, X, Shield, 
   FileText, List, FolderPlus, Check, Trash2, Edit2, Undo2, AlertTriangle,
-  Calendar, CheckCircle, Eye, Clock as ClockIcon
+  Calendar, CheckCircle, Eye, Clock as ClockIcon, Pencil, Save, Percent
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -49,14 +49,19 @@ export default function Contatos() {
   const [criandoListaImport, setCriandoListaImport] = useState(false)
   const [showFollowModal, setShowFollowModal] = useState(null)
   const [showRespostaModal, setShowRespostaModal] = useState(null)
+  const [showAnotacaoModal, setShowAnotacaoModal] = useState(null)
   const [anotacoesFollow, setAnotacoesFollow] = useState('')
   const [anotacoesResposta, setAnotacoesResposta] = useState('')
+  const [anotacaoTexto, setAnotacaoTexto] = useState('')
   const [salvandoFollow, setSalvandoFollow] = useState(false)
   const [salvandoResposta, setSalvandoResposta] = useState(false)
+  const [salvandoAnotacao, setSalvandoAnotacao] = useState(false)
   const [importacoes, setImportacoes] = useState([])
   const [loadingImportacoes, setLoadingImportacoes] = useState(false)
   const [contatosDeletados, setContatosDeletados] = useState([])
   const [loadingDeletados, setLoadingDeletados] = useState(false)
+  const [editandoValor, setEditandoValor] = useState(false)
+  const [editandoComissao, setEditandoComissao] = useState(false)
   const fileInputRef = useRef(null)
   
   const [novoContato, setNovoContato] = useState({ 
@@ -131,12 +136,34 @@ export default function Contatos() {
 
   const carregarAtividades = async (contatoId) => {
     setCarregandoAtividades(true)
-    const { data } = await supabase
+    
+    // Buscar atividades da tabela atividades
+    const { data: atividadesData } = await supabase
       .from('atividades')
       .select('*')
       .eq('contato_id', contatoId)
       .order('criado_em', { ascending: false })
-    setAtividades(data || [])
+    
+    // Buscar follow-ups do histórico
+    const { data: followUpsData } = await supabase
+      .from('follow_ups_historico')
+      .select('*')
+      .eq('contato_id', contatoId)
+      .order('criado_em', { ascending: false })
+    
+    // Combinar e ordenar por data
+    const todasAtividades = [
+      ...(atividadesData || []).map(a => ({ ...a, tipo_atividade: 'atividade' })),
+      ...(followUpsData || []).map(f => ({ 
+        ...f, 
+        tipo_atividade: f.tipo === 'follow_up' ? 'follow_up' : 'resposta',
+        descricao: f.tipo === 'follow_up' ? '📅 Follow-up registrado' : '💬 Resposta registrada'
+      }))
+    ]
+    
+    todasAtividades.sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))
+    
+    setAtividades(todasAtividades)
     setCarregandoAtividades(false)
   }
 
@@ -158,7 +185,6 @@ export default function Contatos() {
         query = query.eq('criado_por', user.uid)
       }
       
-      // Filtrar apenas contatos não deletados
       query = query.is('deletado_em', null)
       
       switch (ordenacao) {
@@ -198,6 +224,49 @@ export default function Contatos() {
   }
 
   // ============================================
+  // ATUALIZAR STATUS
+  // ============================================
+
+  const atualizarStatus = async (id, novoStatus) => {
+    const { data: contato } = await supabase
+      .from('contatos')
+      .select('status_por_usuario,nome')
+      .eq('id', id)
+      .single()
+    
+    const statusAtual = contato?.status_por_usuario || {}
+    const statusAntigo = statusAtual[user.uid] || 'nao_abordado'
+    statusAtual[user.uid] = novoStatus
+    
+    await supabase
+      .from('contatos')
+      .update({ 
+        status_por_usuario: statusAtual, 
+        ultimo_contato: new Date().toISOString() 
+      })
+      .eq('id', id)
+    
+    await supabase.from('atividades').insert({
+      contato_id: id,
+      contato_nome: contato?.nome,
+      equipe_id: user.equipeId,
+      tipo: 'status',
+      descricao: `Status alterado de "${statusAntigo}" para "${novoStatus}"`,
+      status_anterior: statusAntigo,
+      status_novo: novoStatus,
+      criado_por: user.uid,
+      criado_em: new Date().toISOString()
+    })
+    
+    setContatos(prev => prev.map(c => c.id === id ? { ...c, status: novoStatus } : c))
+    if (selectedContato?.id === id) {
+      setSelectedContato(prev => ({ ...prev, status: novoStatus }))
+      carregarAtividades(id)
+    }
+    toast.success('Status atualizado!')
+  }
+
+  // ============================================
   // FOLLOW-UP E RESPOSTA
   // ============================================
 
@@ -225,6 +294,14 @@ export default function Contatos() {
         setShowFollowModal(null)
         setAnotacoesFollow('')
         carregarContatos()
+        if (selectedContato?.id === showFollowModal.id) {
+          carregarAtividades(showFollowModal.id)
+          setSelectedContato(prev => ({ 
+            ...prev, 
+            total_follow_ups: data.total,
+            ultimo_follow_up: new Date().toISOString()
+          }))
+        }
       } else {
         toast.error(data?.mensagem || 'Erro ao registrar follow-up')
       }
@@ -260,6 +337,14 @@ export default function Contatos() {
         setShowRespostaModal(null)
         setAnotacoesResposta('')
         carregarContatos()
+        if (selectedContato?.id === showRespostaModal.id) {
+          carregarAtividades(showRespostaModal.id)
+          setSelectedContato(prev => ({ 
+            ...prev, 
+            total_respostas: data.total,
+            ultima_resposta: new Date().toISOString()
+          }))
+        }
       } else {
         toast.error(data?.mensagem || 'Erro ao registrar resposta')
       }
@@ -268,6 +353,95 @@ export default function Contatos() {
       toast.error('Erro ao registrar resposta')
     } finally {
       setSalvandoResposta(false)
+    }
+  }
+
+  // ============================================
+  // ANOTAÇÕES
+  // ============================================
+
+  const handleAdicionarAnotacao = (contato) => {
+    setShowAnotacaoModal(contato)
+    setAnotacaoTexto('')
+  }
+
+  const salvarAnotacao = async () => {
+    if (!showAnotacaoModal || !anotacaoTexto.trim()) {
+      toast.error('Digite uma anotação')
+      return
+    }
+
+    setSalvandoAnotacao(true)
+    try {
+      const { error } = await supabase
+        .from('atividades')
+        .insert({
+          contato_id: showAnotacaoModal.id,
+          contato_nome: showAnotacaoModal.nome,
+          equipe_id: user.equipeId,
+          tipo: 'anotacao',
+          descricao: `📝 Anotação: ${anotacaoTexto.trim()}`,
+          criado_por: user.uid,
+          criado_em: new Date().toISOString()
+        })
+
+      if (error) throw error
+
+      toast.success('Anotação adicionada!')
+      setShowAnotacaoModal(null)
+      setAnotacaoTexto('')
+      carregarAtividades(showAnotacaoModal.id)
+    } catch (err) {
+      console.error('Erro:', err)
+      toast.error('Erro ao salvar anotação')
+    } finally {
+      setSalvandoAnotacao(false)
+    }
+  }
+
+  // ============================================
+  // VALOR FECHADO E COMISSÃO
+  // ============================================
+
+  const salvarValorFechado = async (contatoId, valor) => {
+    try {
+      const { error } = await supabase
+        .from('contatos')
+        .update({ valor_fechado: valor ? parseFloat(valor) : null })
+        .eq('id', contatoId)
+
+      if (error) throw error
+
+      toast.success('Valor fechado atualizado!')
+      setEditandoValor(false)
+      carregarContatos()
+      if (selectedContato?.id === contatoId) {
+        setSelectedContato(prev => ({ ...prev, valor_fechado: valor ? parseFloat(valor) : null }))
+      }
+    } catch (err) {
+      console.error('Erro:', err)
+      toast.error('Erro ao salvar valor')
+    }
+  }
+
+  const salvarComissao = async (contatoId, comissao) => {
+    try {
+      const { error } = await supabase
+        .from('contatos')
+        .update({ comissao_percentual: comissao ? parseFloat(comissao) : null })
+        .eq('id', contatoId)
+
+      if (error) throw error
+
+      toast.success('Comissão atualizada!')
+      setEditandoComissao(false)
+      carregarContatos()
+      if (selectedContato?.id === contatoId) {
+        setSelectedContato(prev => ({ ...prev, comissao_percentual: comissao ? parseFloat(comissao) : null }))
+      }
+    } catch (err) {
+      console.error('Erro:', err)
+      toast.error('Erro ao salvar comissão')
     }
   }
 
@@ -386,6 +560,63 @@ export default function Contatos() {
     } catch (err) {
       console.error('Erro:', err)
       toast.error('Erro ao restaurar contatos')
+    }
+  }
+
+  // ============================================
+  // CRIAR LISTA
+  // ============================================
+
+  const criarLista = async () => {
+    if (!novaListaNome.trim()) {
+      toast.error('Digite um nome para a lista')
+      return
+    }
+
+    setCriandoLista(true)
+    const { data, error } = await supabase
+      .from('listas')
+      .insert({
+        nome: novaListaNome.trim(),
+        equipe_id: user.equipeId,
+        criado_por: user.uid,
+        descricao: `Lista criada em ${new Date().toLocaleDateString('pt-BR')}`
+      })
+      .select()
+      .single()
+
+    if (error) {
+      toast.error('Erro ao criar lista')
+      console.error(error)
+    } else {
+      toast.success('Lista criada!')
+      setNovaListaNome('')
+      setListaSelecionada(data.id)
+      await carregarListas()
+      setShowListas(false)
+      carregarContatos()
+    }
+    setCriandoLista(false)
+  }
+
+  const deletarLista = async (id) => {
+    if (!confirm('Tem certeza que deseja deletar esta lista? Os contatos não serão deletados.')) return
+    
+    const { error } = await supabase
+      .from('listas')
+      .delete()
+      .eq('id', id)
+      .eq('equipe_id', user.equipeId)
+
+    if (error) {
+      toast.error('Erro ao deletar lista')
+    } else {
+      toast.success('Lista deletada!')
+      if (listaSelecionada === id) {
+        setListaSelecionada(null)
+      }
+      await carregarListas()
+      carregarContatos()
     }
   }
 
@@ -557,7 +788,6 @@ export default function Contatos() {
           return
         }
 
-        // Dividir em lotes de 500
         const lotes = []
         const tamanhoLote = 500
         for (let i = 0; i < contatosJson.length; i += tamanhoLote) {
@@ -654,7 +884,6 @@ export default function Contatos() {
       setListaParaImportar(data.id)
       setNovaListaImport('')
       await carregarListas()
-      // Continuar com a importação
       const file = fileInputRef.current?.files?.[0]
       if (file) {
         await processarCSV(file)
@@ -688,6 +917,8 @@ export default function Contatos() {
       'Empresa', 
       'Follow-ups',
       'Respostas',
+      'Valor Fechado',
+      'Comissão',
       ...camposPersonalizados.map(c => c.nome), 
       'Status'
     ]
@@ -700,6 +931,8 @@ export default function Contatos() {
       c.empresa || '-',
       c.total_follow_ups || 0,
       c.total_respostas || 0,
+      c.valor_fechado ? `R$ ${c.valor_fechado}` : '-',
+      c.comissao_percentual ? `${c.comissao_percentual}%` : '-',
       ...camposPersonalizados.map(cp => c.dados_extras?.[cp.nome] || '-'),
       statusOptions.find(s => s.value === c.status)?.label || c.status
     ])
@@ -743,7 +976,6 @@ export default function Contatos() {
   const getIconesContato = (contato) => {
     const icones = []
     
-    // Ícone de follow-up
     if (contato.ultimo_follow_up) {
       icones.push({ 
         tipo: 'follow_up', 
@@ -753,7 +985,6 @@ export default function Contatos() {
       })
     }
     
-    // Ícone de resposta
     if (contato.ultima_resposta) {
       icones.push({ 
         tipo: 'resposta', 
@@ -763,7 +994,6 @@ export default function Contatos() {
       })
     }
     
-    // Ícone de atraso (3+ dias sem follow-up)
     if (contato.ultimo_follow_up) {
       const dias = Math.floor((new Date() - new Date(contato.ultimo_follow_up)) / (1000 * 60 * 60 * 24))
       if (dias > 3) {
@@ -916,7 +1146,6 @@ export default function Contatos() {
             <div className="space-y-4">
               <p className="text-sm text-[var(--text-secondary)]">Selecione ou crie uma lista para importar os contatos:</p>
 
-              {/* Opção: Criar nova lista */}
               <div className="p-4 bg-[var(--bg-tertiary)] rounded-lg">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -953,7 +1182,6 @@ export default function Contatos() {
                 )}
               </div>
 
-              {/* Opção: Lista existente */}
               <div className="p-4 bg-[var(--bg-tertiary)] rounded-lg">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -1305,6 +1533,69 @@ export default function Contatos() {
       )}
 
       {/* ============================================
+      MODAL DE ANOTAÇÃO
+      ============================================ */}
+      {showAnotacaoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowAnotacaoModal(null)} />
+          <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-6 w-full max-w-md shadow-2xl z-10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2 text-[var(--text-primary)]">
+                <Pencil size={20} className="text-amber-500" />
+                Adicionar Anotação
+              </h2>
+              <button onClick={() => setShowAnotacaoModal(null)} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                <p className="text-sm text-[var(--text-secondary)]">Contato</p>
+                <p className="text-sm font-semibold text-[var(--text-primary)]">{showAnotacaoModal.nome}</p>
+              </div>
+
+              <div>
+                <label className="text-sm text-[var(--text-secondary)] block mb-1">
+                  Anotação *
+                </label>
+                <textarea
+                  value={anotacaoTexto}
+                  onChange={(e) => setAnotacaoTexto(e.target.value)}
+                  placeholder="Digite sua anotação..."
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm resize-none h-32 text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-brand-500/50"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setShowAnotacaoModal(null)}
+                  className="flex-1 py-2.5 text-sm rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={salvarAnotacao}
+                  disabled={salvandoAnotacao || !anotacaoTexto.trim()}
+                  className="flex-1 btn-primary text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {salvandoAnotacao ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Save size={16} />
+                      Salvar Anotação
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================
       MODAL DE LISTAS
       ============================================ */}
       {showListas && (
@@ -1630,7 +1921,7 @@ export default function Contatos() {
                   <th className="text-left p-3 text-[10px] font-medium uppercase">Empresa</th>
                   <th className="text-left p-3 text-[10px] font-medium uppercase">Follow-ups</th>
                   <th className="text-left p-3 text-[10px] font-medium uppercase">Status</th>
-                  <th className="text-left p-3 text-[10px] font-medium uppercase">WPP</th>
+                  <th className="text-left p-3 text-[10px] font-medium uppercase">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -1639,7 +1930,7 @@ export default function Contatos() {
                   const diasSemFollow = c.ultimo_follow_up ? Math.floor((new Date() - new Date(c.ultimo_follow_up)) / (1000 * 60 * 60 * 24)) : null
                   
                   return (
-                    <tr key={c.id} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-tertiary)]/50 group">
+                    <tr key={c.id} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-tertiary)]/50">
                       <td className="p-3">
                         <div className="flex items-center gap-2">
                           {/* Ícones na frente do nome */}
@@ -1669,24 +1960,6 @@ export default function Contatos() {
                           >
                             {c.nome}
                           </button>
-                          
-                          {/* Botões Follow e Resposta */}
-                          <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => handleFollowUp(c)}
-                              className="p-1 rounded hover:bg-brand-500/10 text-brand-500 transition-colors"
-                              title="Registrar Follow-up"
-                            >
-                              <Calendar size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleResposta(c)}
-                              className="p-1 rounded hover:bg-green-500/10 text-green-500 transition-colors"
-                              title="Registrar Resposta"
-                            >
-                              <CheckCircle size={14} />
-                            </button>
-                          </div>
                         </div>
                       </td>
                       {isAdmin && (
@@ -1724,11 +1997,32 @@ export default function Contatos() {
                         </select>
                       </td>
                       <td className="p-3">
-                        {c.telefone ? (
-                          <a href={whatsappLink(c)} target="_blank" className="whatsapp-btn text-xs">
-                            <MessageCircle size={12} /> WPP
-                          </a>
-                        ) : '-'}
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleFollowUp(c)}
+                            className="p-1.5 rounded hover:bg-brand-500/10 text-brand-500 transition-colors"
+                            title="Registrar Follow-up"
+                          >
+                            <Calendar size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleResposta(c)}
+                            className="p-1.5 rounded hover:bg-green-500/10 text-green-500 transition-colors"
+                            title="Registrar Resposta"
+                          >
+                            <CheckCircle size={15} />
+                          </button>
+                          {c.telefone && (
+                            <a
+                              href={whatsappLink(c)}
+                              target="_blank"
+                              className="p-1.5 rounded hover:bg-[#25D366]/10 text-[#25D366] transition-colors"
+                              title="WhatsApp"
+                            >
+                              <MessageCircle size={15} />
+                            </a>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -1767,6 +2061,7 @@ export default function Contatos() {
                 </button>
               </div>
               
+              {/* Informações do Contato */}
               <div className="space-y-3 mb-6">
                 {selectedContato.telefone && (
                   <p className="text-sm text-[var(--text-secondary)]">
@@ -1795,35 +2090,16 @@ export default function Contatos() {
                 {selectedContato.faturamento && (
                   <p className="text-sm text-[var(--text-secondary)]">
                     <DollarSign size={14} className="inline mr-2" />
-                    {selectedContato.faturamento}
+                    Faturamento: {selectedContato.faturamento}
                   </p>
                 )}
                 {selectedContato.nicho && (
                   <p className="text-sm text-[var(--text-secondary)]">
                     <Tag size={14} className="inline mr-2" />
-                    {selectedContato.nicho}
+                    Nicho: {selectedContato.nicho}
                   </p>
                 )}
                 
-                {/* Follow-ups e Respostas */}
-                <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
-                  <p className="text-sm font-medium text-[var(--text-primary)]">Interações</p>
-                  <div className="flex gap-4 mt-1">
-                    <span className="text-xs text-[var(--text-secondary)]">
-                      📅 Follow-ups: {selectedContato.total_follow_ups || 0}
-                      {selectedContato.ultimo_follow_up && (
-                        <span className="ml-1">(último: {formatarDataHora(selectedContato.ultimo_follow_up)})</span>
-                      )}
-                    </span>
-                    <span className="text-xs text-[var(--text-secondary)]">
-                      ✅ Respostas: {selectedContato.total_respostas || 0}
-                      {selectedContato.ultima_resposta && (
-                        <span className="ml-1">(última: {formatarDataHora(selectedContato.ultima_resposta)})</span>
-                      )}
-                    </span>
-                  </div>
-                </div>
-
                 {camposPersonalizados.map((campo, i) => (
                   selectedContato.dados_extras?.[campo.nome] && (
                     <p key={i} className="text-sm text-[var(--text-secondary)]">
@@ -1833,8 +2109,113 @@ export default function Contatos() {
                 ))}
               </div>
 
+              {/* Valor Fechado e Comissão */}
+              <div className="p-4 bg-[var(--bg-tertiary)] rounded-lg mb-4">
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Valor Fechado */}
+                  <div>
+                    <label className="text-xs text-[var(--text-secondary)] block mb-1">💰 Valor Fechado</label>
+                    {editandoValor ? (
+                      <div className="flex gap-1">
+                        <input
+                          type="number"
+                          step="0.01"
+                          defaultValue={selectedContato.valor_fechado || ''}
+                          className="flex-1 px-2 py-1 bg-[var(--bg-secondary)] rounded text-sm"
+                          id="valorFechadoInput"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => {
+                            const input = document.getElementById('valorFechadoInput')
+                            salvarValorFechado(selectedContato.id, input?.value)
+                          }}
+                          className="px-2 py-1 rounded bg-brand-500 text-white text-xs"
+                        >
+                          <Save size={12} />
+                        </button>
+                        <button
+                          onClick={() => setEditandoValor(false)}
+                          className="px-2 py-1 rounded border border-[var(--border-color)] text-xs"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">
+                          {selectedContato.valor_fechado ? `R$ ${selectedContato.valor_fechado}` : '-'}
+                        </span>
+                        <button
+                          onClick={() => setEditandoValor(true)}
+                          className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)]"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Comissão */}
+                  <div>
+                    <label className="text-xs text-[var(--text-secondary)] block mb-1">📊 Comissão (retirar)</label>
+                    {editandoComissao ? (
+                      <div className="flex gap-1">
+                        <input
+                          type="number"
+                          step="0.01"
+                          defaultValue={selectedContato.comissao_percentual || ''}
+                          className="flex-1 px-2 py-1 bg-[var(--bg-secondary)] rounded text-sm"
+                          id="comissaoInput"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => {
+                            const input = document.getElementById('comissaoInput')
+                            salvarComissao(selectedContato.id, input?.value)
+                          }}
+                          className="px-2 py-1 rounded bg-brand-500 text-white text-xs"
+                        >
+                          <Save size={12} />
+                        </button>
+                        <button
+                          onClick={() => setEditandoComissao(false)}
+                          className="px-2 py-1 rounded border border-[var(--border-color)] text-xs"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">
+                          {selectedContato.comissao_percentual ? `${selectedContato.comissao_percentual}%` : '-'}
+                        </span>
+                        <button
+                          onClick={() => setEditandoComissao(true)}
+                          className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)]"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Respostas e Follow-ups */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg text-center">
+                  <p className="text-xs text-[var(--text-secondary)]">💬 Respostas</p>
+                  <p className="text-xl font-bold text-[var(--text-primary)]">{selectedContato.total_respostas || 0}</p>
+                </div>
+                <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg text-center">
+                  <p className="text-xs text-[var(--text-secondary)]">📅 Follow-ups</p>
+                  <p className="text-xl font-bold text-[var(--text-primary)]">{selectedContato.total_follow_ups || 0}</p>
+                </div>
+              </div>
+
               {/* Botões rápidos no painel */}
-              <div className="flex gap-2 mb-4">
+              <div className="flex flex-wrap gap-2 mb-4">
                 <button
                   onClick={() => {
                     setShowPainel(false)
@@ -1853,6 +2234,12 @@ export default function Contatos() {
                 >
                   <CheckCircle size={14} /> Resposta
                 </button>
+                <button
+                  onClick={() => handleAdicionarAnotacao(selectedContato)}
+                  className="flex-1 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 text-sm flex items-center justify-center gap-2"
+                >
+                  <Pencil size={14} /> Anotação
+                </button>
                 {selectedContato.telefone && (
                   <a
                     href={whatsappLink(selectedContato)}
@@ -1864,25 +2251,40 @@ export default function Contatos() {
                 )}
               </div>
 
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-                <History size={16} /> Histórico de Atividades
-              </h3>
+              {/* Histórico de Atividades */}
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                  <History size={16} /> Histórico de Atividades
+                </h3>
+                <span className="text-xs text-[var(--text-secondary)]">{atividades.length} registros</span>
+              </div>
               
               {carregandoAtividades ? (
                 <div className="text-center py-8">
                   <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
                 </div>
               ) : atividades.length === 0 ? (
-                <p className="text-sm text-[var(--text-secondary)] text-center py-8">Nenhuma atividade registrada</p>
+                <div className="text-center py-8">
+                  <p className="text-sm text-[var(--text-secondary)]">Nenhuma atividade registrada</p>
+                  <button
+                    onClick={() => handleAdicionarAnotacao(selectedContato)}
+                    className="mt-2 text-xs text-brand-500 hover:underline"
+                  >
+                    Adicionar primeira anotação
+                  </button>
+                </div>
               ) : (
-                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                <div className="space-y-2 max-h-[300px] overflow-y-auto">
                   {atividades.map(a => (
-                    <div key={a.id} className="flex gap-3 p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                    <div key={a.id} className="flex gap-3 p-2 bg-[var(--bg-tertiary)] rounded-lg">
                       <div className="w-2 h-2 rounded-full bg-brand-500 mt-1.5 shrink-0" />
-                      <div>
+                      <div className="flex-1">
                         <p className="text-sm text-[var(--text-primary)]">{a.descricao}</p>
-                        <p className="text-xs text-[var(--text-secondary)] mt-1">
+                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                           {formatarDataHora(a.criado_em)}
+                          {a.criado_por === user.uid && (
+                            <span className="ml-2 text-brand-500">(você)</span>
+                          )}
                         </p>
                       </div>
                     </div>
