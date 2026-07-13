@@ -3,7 +3,8 @@ import {
   Search, Download, Upload, MoreHorizontal, MessageCircle, Phone, 
   Building2, Tag, Clock, MapPin, DollarSign, Plus, UserPlus, 
   Instagram, Linkedin, Mail, History, ChevronRight, X, Shield, 
-  FileText, List, FolderPlus, Check, Trash2, Edit2, Undo2, AlertTriangle
+  FileText, List, FolderPlus, Check, Trash2, Edit2, Undo2, AlertTriangle,
+  Calendar, CheckCircle, Eye, Clock as ClockIcon
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -40,6 +41,22 @@ export default function Contatos() {
   const [importando, setImportando] = useState(false)
   const [desfazendo, setDesfazendo] = useState(false)
   const [ultimaImportacao, setUltimaImportacao] = useState(null)
+  const [showHistorico, setShowHistorico] = useState(false)
+  const [showLixeira, setShowLixeira] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [listaParaImportar, setListaParaImportar] = useState(null)
+  const [novaListaImport, setNovaListaImport] = useState('')
+  const [criandoListaImport, setCriandoListaImport] = useState(false)
+  const [showFollowModal, setShowFollowModal] = useState(null)
+  const [showRespostaModal, setShowRespostaModal] = useState(null)
+  const [anotacoesFollow, setAnotacoesFollow] = useState('')
+  const [anotacoesResposta, setAnotacoesResposta] = useState('')
+  const [salvandoFollow, setSalvandoFollow] = useState(false)
+  const [salvandoResposta, setSalvandoResposta] = useState(false)
+  const [importacoes, setImportacoes] = useState([])
+  const [loadingImportacoes, setLoadingImportacoes] = useState(false)
+  const [contatosDeletados, setContatosDeletados] = useState([])
+  const [loadingDeletados, setLoadingDeletados] = useState(false)
   const fileInputRef = useRef(null)
   
   const [novoContato, setNovoContato] = useState({ 
@@ -63,7 +80,10 @@ export default function Contatos() {
   const isAdmin = user?.role === 'admin'
   const camposPersonalizados = user?.camposPersonalizados || []
 
-  // Carregar última importação
+  // ============================================
+  // CARREGAR DADOS
+  // ============================================
+
   const carregarUltimaImportacao = async () => {
     if (!user?.equipeId) return
     const { data } = await supabase
@@ -82,7 +102,6 @@ export default function Contatos() {
     }
   }
 
-  // Carregar listas
   const carregarListas = async () => {
     if (!user?.equipeId) return
     const { data } = await supabase
@@ -139,6 +158,9 @@ export default function Contatos() {
         query = query.eq('criado_por', user.uid)
       }
       
+      // Filtrar apenas contatos não deletados
+      query = query.is('deletado_em', null)
+      
       switch (ordenacao) {
         case 'nome':
           query = query.order('nome', { ascending: true })
@@ -175,210 +197,201 @@ export default function Contatos() {
     }
   }
 
-  const atualizarStatus = async (id, novoStatus) => {
-    const { data: contato } = await supabase
-      .from('contatos')
-      .select('status_por_usuario,nome')
-      .eq('id', id)
-      .single()
-    
-    const statusAtual = contato?.status_por_usuario || {}
-    const statusAntigo = statusAtual[user.uid] || 'nao_abordado'
-    statusAtual[user.uid] = novoStatus
-    
-    await supabase
-      .from('contatos')
-      .update({ 
-        status_por_usuario: statusAtual, 
-        ultimo_contato: new Date().toISOString() 
-      })
-      .eq('id', id)
-    
-    await supabase.from('atividades').insert({
-      contato_id: id,
-      contato_nome: contato?.nome,
-      equipe_id: user.equipeId,
-      tipo: 'status',
-      descricao: `Status alterado de "${statusAntigo}" para "${novoStatus}"`,
-      status_anterior: statusAntigo,
-      status_novo: novoStatus,
-      criado_por: user.uid,
-      criado_em: new Date().toISOString()
-    })
-    
-    setContatos(prev => prev.map(c => c.id === id ? { ...c, status: novoStatus } : c))
-    if (selectedContato?.id === id) {
-      setSelectedContato(prev => ({ ...prev, status: novoStatus }))
-      carregarAtividades(id)
-    }
-    toast.success('Status atualizado!')
+  // ============================================
+  // FOLLOW-UP E RESPOSTA
+  // ============================================
+
+  const handleFollowUp = async (contato) => {
+    setShowFollowModal(contato)
+    setAnotacoesFollow('')
   }
 
-  // Criar nova lista
-  const criarLista = async () => {
-    if (!novaListaNome.trim()) {
-      toast.error('Digite um nome para a lista')
-      return
-    }
-
-    setCriandoLista(true)
-    const { data, error } = await supabase
-      .from('listas')
-      .insert({
-        nome: novaListaNome.trim(),
-        equipe_id: user.equipeId,
-        criado_por: user.uid,
-        descricao: `Lista criada em ${new Date().toLocaleDateString('pt-BR')}`
-      })
-      .select()
-      .single()
-
-    if (error) {
-      toast.error('Erro ao criar lista')
-      console.error(error)
-    } else {
-      toast.success('Lista criada!')
-      setNovaListaNome('')
-      setListaSelecionada(data.id)
-      await carregarListas()
-      setShowListas(false)
-      carregarContatos()
-    }
-    setCriandoLista(false)
-  }
-
-  // Deletar lista
-  const deletarLista = async (id) => {
-    if (!confirm('Tem certeza que deseja deletar esta lista? Os contatos não serão deletados.')) return
+  const registrarFollowUp = async () => {
+    if (!showFollowModal) return
     
-    const { error } = await supabase
-      .from('listas')
-      .delete()
-      .eq('id', id)
-      .eq('equipe_id', user.equipeId)
+    setSalvandoFollow(true)
+    try {
+      const { data, error } = await supabase.rpc('registrar_follow_up', {
+        contato_id_param: showFollowModal.id,
+        equipe_id_param: user.equipeId,
+        criado_por_param: user.uid,
+        anotacoes_param: anotacoesFollow || null
+      })
 
-    if (error) {
-      toast.error('Erro ao deletar lista')
-    } else {
-      toast.success('Lista deletada!')
-      if (listaSelecionada === id) {
-        setListaSelecionada(null)
+      if (error) throw error
+
+      if (data?.sucesso) {
+        toast.success(data.mensagem)
+        setShowFollowModal(null)
+        setAnotacoesFollow('')
+        carregarContatos()
+      } else {
+        toast.error(data?.mensagem || 'Erro ao registrar follow-up')
       }
-      await carregarListas()
-      carregarContatos()
+    } catch (err) {
+      console.error('Erro:', err)
+      toast.error('Erro ao registrar follow-up')
+    } finally {
+      setSalvandoFollow(false)
     }
   }
 
-  // Desfazer última importação
-  const desfazerImportacao = async () => {
-    if (!ultimaImportacao) {
-      toast.error('Nenhuma importação para desfazer')
-      return
-    }
+  const handleResposta = async (contato) => {
+    setShowRespostaModal(contato)
+    setAnotacoesResposta('')
+  }
 
-    if (!confirm(`Tem certeza que deseja desfazer a importação de "${ultimaImportacao.nome_arquivo || 'arquivo'}" com ${ultimaImportacao.total_contatos} contatos?`)) {
+  const registrarResposta = async () => {
+    if (!showRespostaModal) return
+    
+    setSalvandoResposta(true)
+    try {
+      const { data, error } = await supabase.rpc('registrar_resposta', {
+        contato_id_param: showRespostaModal.id,
+        equipe_id_param: user.equipeId,
+        criado_por_param: user.uid,
+        anotacoes_param: anotacoesResposta || null
+      })
+
+      if (error) throw error
+
+      if (data?.sucesso) {
+        toast.success(data.mensagem)
+        setShowRespostaModal(null)
+        setAnotacoesResposta('')
+        carregarContatos()
+      } else {
+        toast.error(data?.mensagem || 'Erro ao registrar resposta')
+      }
+    } catch (err) {
+      console.error('Erro:', err)
+      toast.error('Erro ao registrar resposta')
+    } finally {
+      setSalvandoResposta(false)
+    }
+  }
+
+  // ============================================
+  // HISTÓRICO DE IMPORTAÇÕES
+  // ============================================
+
+  const carregarImportacoes = async () => {
+    if (!user?.equipeId) return
+    
+    setLoadingImportacoes(true)
+    const { data } = await supabase
+      .from('importacoes_historico')
+      .select('*')
+      .eq('equipe_id', user.equipeId)
+      .order('data_importacao', { ascending: false })
+    
+    setImportacoes(data || [])
+    setLoadingImportacoes(false)
+  }
+
+  const abrirHistorico = async () => {
+    setShowHistorico(true)
+    await carregarImportacoes()
+  }
+
+  const desfazerImportacao = async (importacao) => {
+    if (!confirm(`Tem certeza que deseja desfazer a importação "${importacao.nome_arquivo}" com ${importacao.total_contatos} contatos? Os contatos serão movidos para a lixeira.`)) {
       return
     }
 
     setDesfazendo(true)
     try {
       const { data, error } = await supabase.rpc('desfazer_importacao', {
-        importacao_id_param: ultimaImportacao.id
+        importacao_id_param: importacao.id,
+        deletado_por_param: user.uid
       })
 
-      if (error) {
-        console.error('Erro ao desfazer importação:', error)
-        toast.error('Erro ao desfazer importação')
-      } else if (data?.sucesso) {
-        toast.success(data.mensagem || 'Importação desfeita com sucesso!')
-        setUltimaImportacao(null)
+      if (error) throw error
+
+      if (data?.sucesso) {
+        toast.success(data.mensagem)
+        await carregarImportacoes()
+        await carregarUltimaImportacao()
         await carregarContatos()
-        await carregarListas()
       } else {
         toast.error(data?.mensagem || 'Erro ao desfazer importação')
       }
     } catch (err) {
       console.error('Erro:', err)
       toast.error('Erro ao desfazer importação')
+    } finally {
+      setDesfazendo(false)
     }
-    setDesfazendo(false)
   }
 
-  const abrirNovoContato = () => {
-    setNovoContato({ 
-      nome: '', 
-      telefone: '', 
-      email: '', 
-      empresa: '', 
-      instagram: '', 
-      linkedin: '', 
-      faturamento: '', 
-      nicho: '', 
-      tempoMercado: '' 
-    })
-    const extrasIniciais = {}
-    camposPersonalizados.forEach(campo => {
-      extrasIniciais[campo.nome] = ''
-    })
-    setDadosExtras(extrasIniciais)
-    setShowNovo(true)
-  }
+  // ============================================
+  // LIXEIRA
+  // ============================================
 
-  const handleSalvar = async () => {
-    if (!novoContato.nome.trim()) { 
-      toast.error('Nome é obrigatório')
-      return 
-    }
-    setSalvando(true)
+  const carregarLixeira = async () => {
+    if (!user?.equipeId) return
     
-    const contatoData = {
-      nome: novoContato.nome.trim(),
-      telefone: novoContato.telefone || null,
-      email: novoContato.email || null,
-      empresa: novoContato.empresa || null,
-      instagram: novoContato.instagram || null,
-      linkedin: novoContato.linkedin || null,
-      faturamento: novoContato.faturamento || null,
-      nicho: novoContato.nicho || null,
-      tempo_mercado: novoContato.tempoMercado || null,
-      dados_extras: dadosExtras,
-      tag: 'prospeccao_propria',
-      status: 'nao_abordado',
-      equipe_id: user.equipeId,
-      criado_por: user.uid,
-      status_por_usuario: {},
-      data_criacao: new Date().toISOString()
-    }
-
-    if (listaSelecionada) {
-      contatoData.lista_id = listaSelecionada
-    }
-
-    const { error } = await supabase.from('contatos').insert(contatoData)
+    setLoadingDeletados(true)
+    const { data } = await supabase
+      .from('contatos')
+      .select('*')
+      .eq('equipe_id', user.equipeId)
+      .not('deletado_em', 'is', null)
+      .order('deletado_em', { ascending: false })
     
-    if (error) { 
-      toast.error('Erro ao salvar')
-      setSalvando(false)
-      return 
-    }
-
-    toast.success('Contato adicionado!')
-    setNovoContato({ 
-      nome: '', 
-      telefone: '', 
-      email: '', 
-      empresa: '', 
-      instagram: '', 
-      linkedin: '', 
-      faturamento: '', 
-      nicho: '', 
-      tempoMercado: '' 
-    })
-    setDadosExtras({})
-    setShowNovo(false)
-    setSalvando(false)
-    carregarContatos()
+    setContatosDeletados(data || [])
+    setLoadingDeletados(false)
   }
+
+  const abrirLixeira = async () => {
+    setShowLixeira(true)
+    await carregarLixeira()
+  }
+
+  const restaurarContato = async (contatoId) => {
+    try {
+      const { data, error } = await supabase.rpc('restaurar_contatos', {
+        contatos_ids_param: [contatoId]
+      })
+
+      if (error) throw error
+
+      if (data?.sucesso) {
+        toast.success(data.mensagem)
+        await carregarLixeira()
+        await carregarContatos()
+      }
+    } catch (err) {
+      console.error('Erro:', err)
+      toast.error('Erro ao restaurar contato')
+    }
+  }
+
+  const restaurarTodos = async () => {
+    if (!confirm('Tem certeza que deseja restaurar todos os contatos da lixeira?')) return
+    
+    const ids = contatosDeletados.map(c => c.id)
+    try {
+      const { data, error } = await supabase.rpc('restaurar_contatos', {
+        contatos_ids_param: ids
+      })
+
+      if (error) throw error
+
+      if (data?.sucesso) {
+        toast.success(data.mensagem)
+        await carregarLixeira()
+        await carregarContatos()
+      }
+    } catch (err) {
+      console.error('Erro:', err)
+      toast.error('Erro ao restaurar contatos')
+    }
+  }
+
+  // ============================================
+  // IMPORTAR CSV
+  // ============================================
 
   const handleImportarCSV = (e) => {
     const file = e.target.files?.[0]
@@ -389,14 +402,10 @@ export default function Contatos() {
       return
     }
 
-    if (!listaSelecionada) {
-      setShowListas(true)
-      setImportando(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      return
-    }
-
-    processarCSV(file)
+    setShowImportModal(true)
+    setListaParaImportar(null)
+    setNovaListaImport('')
+    fileInputRef.current.value = ''
   }
 
   const processarCSV = async (file) => {
@@ -548,7 +557,7 @@ export default function Contatos() {
           return
         }
 
-        // Dividir em lotes de 500 para não sobrecarregar
+        // Dividir em lotes de 500
         const lotes = []
         const tamanhoLote = 500
         for (let i = 0; i < contatosJson.length; i += tamanhoLote) {
@@ -564,8 +573,8 @@ export default function Contatos() {
             dados_json: lote,
             equipe_id_param: user.equipeId,
             criado_por_param: user.uid,
-            nome_arquivo_param: `${file.name} (lote ${loteIndex + 1}/${lotes.length})`,
-            lista_id_param: listaSelecionada
+            nome_arquivo_param: file.name,
+            lista_id_param: listaParaImportar
           })
 
           if (error) {
@@ -580,12 +589,14 @@ export default function Contatos() {
             }
           }
 
-          // Atualizar progresso
           toast.loading(`Importando... ${Math.round(((loteIndex + 1) / lotes.length) * 100)}%`, { duration: 1000 })
         }
 
         if (totalInseridos > 0) {
           toast.success(`${totalInseridos} contato(s) importado(s) com sucesso!`)
+          setShowImportModal(false)
+          setListaParaImportar(null)
+          setNovaListaImport('')
           await carregarContatos()
           await carregarListas()
           await carregarUltimaImportacao()
@@ -613,6 +624,49 @@ export default function Contatos() {
     reader.readAsText(file)
   }
 
+  // ============================================
+  // CRIAR LISTA NA IMPORTAÇÃO
+  // ============================================
+
+  const criarListaImport = async () => {
+    if (!novaListaImport.trim()) {
+      toast.error('Digite um nome para a lista')
+      return
+    }
+
+    setCriandoListaImport(true)
+    const { data, error } = await supabase
+      .from('listas')
+      .insert({
+        nome: novaListaImport.trim(),
+        equipe_id: user.equipeId,
+        criado_por: user.uid,
+        descricao: `Lista criada em ${new Date().toLocaleDateString('pt-BR')}`
+      })
+      .select()
+      .single()
+
+    if (error) {
+      toast.error('Erro ao criar lista')
+      console.error(error)
+    } else {
+      toast.success('Lista criada!')
+      setListaParaImportar(data.id)
+      setNovaListaImport('')
+      await carregarListas()
+      // Continuar com a importação
+      const file = fileInputRef.current?.files?.[0]
+      if (file) {
+        await processarCSV(file)
+      }
+    }
+    setCriandoListaImport(false)
+  }
+
+  // ============================================
+  // EXPORTAR PDF
+  // ============================================
+
   const exportarPDF = () => {
     const doc = new jsPDF()
     const dataAtual = new Date().toLocaleDateString('pt-BR')
@@ -632,6 +686,8 @@ export default function Contatos() {
       'Telefone', 
       'Email', 
       'Empresa', 
+      'Follow-ups',
+      'Respostas',
       ...camposPersonalizados.map(c => c.nome), 
       'Status'
     ]
@@ -642,6 +698,8 @@ export default function Contatos() {
       c.telefone ? formatPhone(c.telefone) : '-',
       c.email || '-',
       c.empresa || '-',
+      c.total_follow_ups || 0,
+      c.total_respostas || 0,
       ...camposPersonalizados.map(cp => c.dados_extras?.[cp.nome] || '-'),
       statusOptions.find(s => s.value === c.status)?.label || c.status
     ])
@@ -659,6 +717,10 @@ export default function Contatos() {
     doc.save(`contatos-${listaNome}-${dataAtual.replace(/\//g, '-')}.pdf`)
   }
 
+  // ============================================
+  // UTILITÁRIOS
+  // ============================================
+
   const contatosFiltrados = contatos.filter(c => {
     const matchBusca = !busca || 
       c.nome?.toLowerCase().includes(busca.toLowerCase()) || 
@@ -672,16 +734,70 @@ export default function Contatos() {
 
   const formatPhone = (p) => p ? `(${p.slice(0,2)}) ${p.slice(2,7)}-${p.slice(7)}` : '-'
   const whatsappLink = (c) => c.telefone ? `https://wa.me/55${c.telefone}?text=Ol%C3%A1%20${encodeURIComponent(c.nome?.split(' ')[0] || '')}` : '#'
-
   const getMembroNome = (criadoPor) => {
     if (!criadoPor) return ''
     const membro = membrosEquipe.find(m => m.id === criadoPor)
     return membro ? membro.nome : ''
   }
 
+  const getIconesContato = (contato) => {
+    const icones = []
+    
+    // Ícone de follow-up
+    if (contato.ultimo_follow_up) {
+      icones.push({ 
+        tipo: 'follow_up', 
+        data: contato.ultimo_follow_up,
+        total: contato.total_follow_ups || 0,
+        icone: '📅'
+      })
+    }
+    
+    // Ícone de resposta
+    if (contato.ultima_resposta) {
+      icones.push({ 
+        tipo: 'resposta', 
+        data: contato.ultima_resposta,
+        total: contato.total_respostas || 0,
+        icone: '✅'
+      })
+    }
+    
+    // Ícone de atraso (3+ dias sem follow-up)
+    if (contato.ultimo_follow_up) {
+      const dias = Math.floor((new Date() - new Date(contato.ultimo_follow_up)) / (1000 * 60 * 60 * 24))
+      if (dias > 3) {
+        icones.push({ 
+          tipo: 'atrasado', 
+          data: contato.ultimo_follow_up,
+          dias: dias,
+          icone: '⚠️'
+        })
+      }
+    }
+    
+    return icones
+  }
+
+  const formatarDataHora = (data) => {
+    return new Date(data).toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  // ============================================
+  // RENDER
+  // ============================================
+
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
+      {/* ============================================
+      HEADER
+      ============================================ */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -707,7 +823,7 @@ export default function Contatos() {
         <div className="flex gap-2 flex-wrap">
           {ultimaImportacao && (
             <button 
-              onClick={desfazerImportacao}
+              onClick={() => desfazerImportacao(ultimaImportacao)}
               disabled={desfazendo}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-all text-sm ${desfazendo ? 'opacity-50 pointer-events-none' : ''}`}
             >
@@ -716,13 +832,43 @@ export default function Contatos() {
             </button>
           )}
           <button 
+            onClick={abrirHistorico}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-all text-sm"
+          >
+            <ClockIcon size={16} /> Histórico
+          </button>
+          <button 
+            onClick={abrirLixeira}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all text-sm"
+          >
+            <Trash2 size={16} /> Lixeira
+          </button>
+          <button 
             onClick={() => setShowListas(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-all text-sm"
           >
             <List size={16} /> Listas
           </button>
           <button 
-            onClick={abrirNovoContato} 
+            onClick={() => {
+              setNovoContato({ 
+                nome: '', 
+                telefone: '', 
+                email: '', 
+                empresa: '', 
+                instagram: '', 
+                linkedin: '', 
+                faturamento: '', 
+                nicho: '', 
+                tempoMercado: '' 
+              })
+              const extrasIniciais = {}
+              camposPersonalizados.forEach(campo => {
+                extrasIniciais[campo.nome] = ''
+              })
+              setDadosExtras(extrasIniciais)
+              setShowNovo(true)
+            }} 
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-all text-sm"
           >
             <Plus size={16} /> Novo Contato
@@ -750,13 +896,423 @@ export default function Contatos() {
         </div>
       </div>
 
-      {/* Modal de Listas */}
+      {/* ============================================
+      MODAL DE IMPORTAÇÃO - ESCOLHER LISTA
+      ============================================ */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowImportModal(false)} />
+          <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-6 w-full max-w-md shadow-2xl z-10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2 text-[var(--text-primary)]">
+                <Upload size={20} className="text-blue-500" />
+                Importar Contatos
+              </h2>
+              <button onClick={() => setShowImportModal(false)} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-sm text-[var(--text-secondary)]">Selecione ou crie uma lista para importar os contatos:</p>
+
+              {/* Opção: Criar nova lista */}
+              <div className="p-4 bg-[var(--bg-tertiary)] rounded-lg">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tipoLista"
+                    value="nova"
+                    checked={listaParaImportar === 'nova'}
+                    onChange={() => {
+                      setListaParaImportar('nova')
+                      setNovaListaImport('')
+                    }}
+                    className="w-4 h-4 text-brand-500"
+                  />
+                  <span className="text-sm font-medium text-[var(--text-primary)]">Criar nova lista</span>
+                </label>
+                {listaParaImportar === 'nova' && (
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Nome da nova lista..."
+                      value={novaListaImport}
+                      onChange={(e) => setNovaListaImport(e.target.value)}
+                      className="flex-1 px-3 py-2 bg-[var(--bg-secondary)] rounded-lg text-sm"
+                      autoFocus
+                    />
+                    <button
+                      onClick={criarListaImport}
+                      disabled={criandoListaImport || !novaListaImport.trim()}
+                      className="px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 text-sm disabled:opacity-50"
+                    >
+                      {criandoListaImport ? 'Criando...' : 'Criar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Opção: Lista existente */}
+              <div className="p-4 bg-[var(--bg-tertiary)] rounded-lg">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tipoLista"
+                    value="existente"
+                    checked={listaParaImportar !== 'nova' && listaParaImportar !== null}
+                    onChange={() => setListaParaImportar(listas[0]?.id || null)}
+                    className="w-4 h-4 text-brand-500"
+                  />
+                  <span className="text-sm font-medium text-[var(--text-primary)]">Importar para lista existente</span>
+                </label>
+                {listaParaImportar !== 'nova' && (
+                  <div className="mt-2">
+                    <select
+                      value={listaParaImportar || ''}
+                      onChange={(e) => setListaParaImportar(e.target.value || null)}
+                      className="w-full px-3 py-2 bg-[var(--bg-secondary)] rounded-lg text-sm"
+                    >
+                      <option value="">Selecione uma lista...</option>
+                      {listas.map(lista => (
+                        <option key={lista.id} value={lista.id}>
+                          {lista.nome} ({lista.contatos_count || 0} contatos)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setShowImportModal(false)}
+                  className="flex-1 py-2.5 text-sm rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    const file = fileInputRef.current?.files?.[0]
+                    if (!file) {
+                      toast.error('Selecione um arquivo CSV')
+                      return
+                    }
+                    if (!listaParaImportar || listaParaImportar === 'nova') {
+                      toast.error('Selecione ou crie uma lista')
+                      return
+                    }
+                    setShowImportModal(false)
+                    processarCSV(file)
+                  }}
+                  className="flex-1 btn-primary text-sm"
+                >
+                  Importar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================
+      MODAL DE HISTÓRICO
+      ============================================ */}
+      {showHistorico && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowHistorico(false)} />
+          <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-6 w-full max-w-3xl shadow-2xl z-10 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2 text-[var(--text-primary)]">
+                <ClockIcon size={20} className="text-amber-500" />
+                Histórico de Importações
+              </h2>
+              <button onClick={() => setShowHistorico(false)} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]">
+                <X size={20} />
+              </button>
+            </div>
+
+            {loadingImportacoes ? (
+              <div className="text-center py-8">
+                <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              </div>
+            ) : importacoes.length === 0 ? (
+              <div className="text-center py-8 text-[var(--text-secondary)]">
+                <FileText size={40} className="mx-auto mb-3 opacity-30" />
+                <p>Nenhuma importação encontrada</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {importacoes.map((imp) => (
+                  <div
+                    key={imp.id}
+                    className={`p-4 rounded-lg border ${
+                      imp.status === 'revertida'
+                        ? 'border-red-500/20 bg-red-500/5'
+                        : 'border-[var(--border-color)] hover:border-brand-500/30'
+                    } transition-all`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <FileText size={18} className="text-brand-500" />
+                          <span className="font-medium text-[var(--text-primary)]">
+                            {imp.nome_arquivo}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            imp.status === 'concluida'
+                              ? 'bg-green-500/10 text-green-500'
+                              : 'bg-red-500/10 text-red-500'
+                          }`}>
+                            {imp.status === 'concluida' ? '✅ Concluída' : '❌ Revertida'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 mt-2 text-sm text-[var(--text-secondary)]">
+                          <span className="flex items-center gap-1">
+                            <Clock size={14} />
+                            {formatarDataHora(imp.data_importacao)}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Users size={14} />
+                            {imp.total_contatos} contatos
+                          </span>
+                          {imp.criado_por === user.uid && (
+                            <span className="text-xs text-brand-500">(por você)</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {imp.status === 'concluida' && (
+                          <button
+                            onClick={() => desfazerImportacao(imp)}
+                            className="p-2 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors"
+                            title="Desfazer importação"
+                          >
+                            <Undo2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================
+      MODAL DE LIXEIRA
+      ============================================ */}
+      {showLixeira && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowLixeira(false)} />
+          <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-6 w-full max-w-3xl shadow-2xl z-10 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2 text-[var(--text-primary)]">
+                <Trash2 size={20} className="text-red-500" />
+                Lixeira ({contatosDeletados.length} contatos)
+              </h2>
+              <button onClick={() => setShowLixeira(false)} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]">
+                <X size={20} />
+              </button>
+            </div>
+
+            {contatosDeletados.length > 0 && (
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={restaurarTodos}
+                  className="px-4 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 text-sm"
+                >
+                  Restaurar Todos
+                </button>
+              </div>
+            )}
+
+            {loadingDeletados ? (
+              <div className="text-center py-8">
+                <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              </div>
+            ) : contatosDeletados.length === 0 ? (
+              <div className="text-center py-8 text-[var(--text-secondary)]">
+                <Trash2 size={40} className="mx-auto mb-3 opacity-30" />
+                <p>Lixeira vazia</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {contatosDeletados.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-[var(--text-primary)]">{c.nome}</p>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        {c.telefone || 'Sem telefone'} • {c.empresa || 'Sem empresa'}
+                      </p>
+                      <p className="text-xs text-red-500 mt-1">
+                        Excluído em: {formatarDataHora(c.deletado_em)} • {c.motivo_delecao || 'Sem motivo'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => restaurarContato(c.id)}
+                      className="px-3 py-1.5 rounded-lg bg-green-500 text-white hover:bg-green-600 text-xs"
+                    >
+                      Restaurar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================
+      MODAL DE FOLLOW-UP
+      ============================================ */}
+      {showFollowModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowFollowModal(null)} />
+          <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-6 w-full max-w-md shadow-2xl z-10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2 text-[var(--text-primary)]">
+                <Calendar size={20} className="text-brand-500" />
+                Registrar Follow-up
+              </h2>
+              <button onClick={() => setShowFollowModal(null)} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                <p className="text-sm text-[var(--text-secondary)]">Contato</p>
+                <p className="text-sm font-semibold text-[var(--text-primary)]">{showFollowModal.nome}</p>
+              </div>
+
+              <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                <p className="text-sm text-[var(--text-secondary)]">Data e Hora</p>
+                <p className="text-sm font-semibold text-[var(--text-primary)]">
+                  {formatarDataHora(new Date())}
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm text-[var(--text-secondary)] block mb-1">
+                  Anotações (opcional)
+                </label>
+                <textarea
+                  value={anotacoesFollow}
+                  onChange={(e) => setAnotacoesFollow(e.target.value)}
+                  placeholder="Digite suas anotações sobre este follow-up..."
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm resize-none h-24 text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-brand-500/50"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setShowFollowModal(null)}
+                  className="flex-1 py-2.5 text-sm rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={registrarFollowUp}
+                  disabled={salvandoFollow}
+                  className="flex-1 btn-primary text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {salvandoFollow ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Calendar size={16} />
+                      Registrar Follow-up
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================
+      MODAL DE RESPOSTA
+      ============================================ */}
+      {showRespostaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowRespostaModal(null)} />
+          <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-6 w-full max-w-md shadow-2xl z-10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2 text-[var(--text-primary)]">
+                <CheckCircle size={20} className="text-green-500" />
+                Registrar Resposta
+              </h2>
+              <button onClick={() => setShowRespostaModal(null)} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                <p className="text-sm text-[var(--text-secondary)]">Contato</p>
+                <p className="text-sm font-semibold text-[var(--text-primary)]">{showRespostaModal.nome}</p>
+              </div>
+
+              <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                <p className="text-sm text-[var(--text-secondary)]">Data e Hora</p>
+                <p className="text-sm font-semibold text-[var(--text-primary)]">
+                  {formatarDataHora(new Date())}
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm text-[var(--text-secondary)] block mb-1">
+                  Anotações (opcional)
+                </label>
+                <textarea
+                  value={anotacoesResposta}
+                  onChange={(e) => setAnotacoesResposta(e.target.value)}
+                  placeholder="Digite suas anotações sobre esta resposta..."
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm resize-none h-24 text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-brand-500/50"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setShowRespostaModal(null)}
+                  className="flex-1 py-2.5 text-sm rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={registrarResposta}
+                  disabled={salvandoResposta}
+                  className="flex-1 btn-primary text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#22c55e' }}
+                >
+                  {salvandoResposta ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle size={16} />
+                      Registrar Resposta
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================
+      MODAL DE LISTAS
+      ============================================ */}
       {showListas && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowListas(false)} />
           <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-6 w-full max-w-md shadow-2xl z-10 max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
+              <h2 className="text-lg font-semibold flex items-center gap-2 text-[var(--text-primary)]">
                 <List size={20} /> Gerenciar Listas
               </h2>
               <button onClick={() => setShowListas(false)} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]">
@@ -854,7 +1410,9 @@ export default function Contatos() {
         </div>
       )}
 
-      {/* Modal Novo Contato */}
+      {/* ============================================
+      MODAL NOVO CONTATO
+      ============================================ */}
       {showNovo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowNovo(false)} />
@@ -991,7 +1549,9 @@ export default function Contatos() {
         </div>
       )}
 
-      {/* Filtros */}
+      {/* ============================================
+      FILTROS
+      ============================================ */}
       <div className="card p-4">
         <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-[200px]">
@@ -1037,7 +1597,9 @@ export default function Contatos() {
         </div>
       </div>
 
-      {/* Tabela de Contatos */}
+      {/* ============================================
+      TABELA DE CONTATOS
+      ============================================ */}
       <div className="card overflow-hidden">
         {loading ? (
           <div className="p-12 text-center">
@@ -1066,68 +1628,120 @@ export default function Contatos() {
                   <th className="text-left p-3 text-[10px] font-medium uppercase">Telefone</th>
                   <th className="text-left p-3 text-[10px] font-medium uppercase">Email</th>
                   <th className="text-left p-3 text-[10px] font-medium uppercase">Empresa</th>
-                  <th className="text-left p-3 text-[10px] font-medium uppercase">Faturamento</th>
-                  {camposPersonalizados.map((campo, i) => (
-                    <th key={i} className="text-left p-3 text-[10px] font-medium uppercase">{campo.nome}</th>
-                  ))}
+                  <th className="text-left p-3 text-[10px] font-medium uppercase">Follow-ups</th>
                   <th className="text-left p-3 text-[10px] font-medium uppercase">Status</th>
                   <th className="text-left p-3 text-[10px] font-medium uppercase">WPP</th>
                 </tr>
               </thead>
               <tbody>
-                {contatosFiltrados.map(c => (
-                  <tr key={c.id} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-tertiary)]/50">
-                    <td className="p-3">
-                      <button 
-                        onClick={() => { 
-                          setSelectedContato(c)
-                          setShowPainel(true)
-                          carregarAtividades(c.id)
-                        }} 
-                        className="text-left hover:text-brand-500 text-sm font-medium"
-                      >
-                        {c.nome}
-                      </button>
-                    </td>
-                    {isAdmin && (
-                      <td className="p-3 text-xs text-[var(--text-secondary)]">
-                        {c.criado_por === user.uid ? 'Você' : getMembroNome(c.criado_por) || '-'}
+                {contatosFiltrados.map(c => {
+                  const icones = getIconesContato(c)
+                  const diasSemFollow = c.ultimo_follow_up ? Math.floor((new Date() - new Date(c.ultimo_follow_up)) / (1000 * 60 * 60 * 24)) : null
+                  
+                  return (
+                    <tr key={c.id} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-tertiary)]/50 group">
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          {/* Ícones na frente do nome */}
+                          {icones.map((icon, idx) => (
+                            <span
+                              key={idx}
+                              className="text-sm cursor-help"
+                              title={
+                                icon.tipo === 'follow_up' 
+                                  ? `📅 Último follow-up: ${formatarDataHora(icon.data)} (${icon.total} total)`
+                                  : icon.tipo === 'resposta'
+                                  ? `✅ Respondeu em: ${formatarDataHora(icon.data)} (${icon.total} total)`
+                                  : `⚠️ ${icon.dias} dias sem follow-up (último: ${formatarDataHora(icon.data)})`
+                              }
+                            >
+                              {icon.icone}
+                            </span>
+                          ))}
+                          
+                          <button 
+                            onClick={() => { 
+                              setSelectedContato(c)
+                              setShowPainel(true)
+                              carregarAtividades(c.id)
+                            }} 
+                            className="text-left hover:text-brand-500 text-sm font-medium"
+                          >
+                            {c.nome}
+                          </button>
+                          
+                          {/* Botões Follow e Resposta */}
+                          <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleFollowUp(c)}
+                              className="p-1 rounded hover:bg-brand-500/10 text-brand-500 transition-colors"
+                              title="Registrar Follow-up"
+                            >
+                              <Calendar size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleResposta(c)}
+                              className="p-1 rounded hover:bg-green-500/10 text-green-500 transition-colors"
+                              title="Registrar Resposta"
+                            >
+                              <CheckCircle size={14} />
+                            </button>
+                          </div>
+                        </div>
                       </td>
-                    )}
-                    <td className="p-3 text-sm font-mono">{c.telefone ? formatPhone(c.telefone) : '-'}</td>
-                    <td className="p-3 text-xs">{c.email || '-'}</td>
-                    <td className="p-3 text-xs">{c.empresa || '-'}</td>
-                    <td className="p-3 text-xs">{c.faturamento || '-'}</td>
-                    {camposPersonalizados.map((campo, i) => (
-                      <td key={i} className="p-3 text-xs">{c.dados_extras?.[campo.nome] || '-'}</td>
-                    ))}
-                    <td className="p-3">
-                      <select 
-                        value={c.status} 
-                        onChange={e => atualizarStatus(c.id, e.target.value)} 
-                        className="text-xs px-2 py-1 rounded-full border bg-[var(--bg-tertiary)]"
-                      >
-                        {statusOptions.filter(s => s.value !== 'todos').map(s => (
-                          <option key={s.value} value={s.value}>{s.label}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="p-3">
-                      {c.telefone ? (
-                        <a href={whatsappLink(c)} target="_blank" className="whatsapp-btn text-xs">
-                          <MessageCircle size={12} /> WPP
-                        </a>
-                      ) : '-'}
-                    </td>
-                  </tr>
-                ))}
+                      {isAdmin && (
+                        <td className="p-3 text-xs text-[var(--text-secondary)]">
+                          {c.criado_por === user.uid ? 'Você' : getMembroNome(c.criado_por) || '-'}
+                        </td>
+                      )}
+                      <td className="p-3 text-sm font-mono">{c.telefone ? formatPhone(c.telefone) : '-'}</td>
+                      <td className="p-3 text-xs">{c.email || '-'}</td>
+                      <td className="p-3 text-xs">{c.empresa || '-'}</td>
+                      <td className="p-3 text-xs">
+                        <div className="flex items-center gap-1">
+                          <span className="font-medium">{c.total_follow_ups || 0}</span>
+                          {c.ultimo_follow_up && (
+                            <span className="text-[10px] text-[var(--text-secondary)]">
+                              {formatarDataHora(c.ultimo_follow_up).slice(0, 10)}
+                            </span>
+                          )}
+                          {diasSemFollow !== null && diasSemFollow > 3 && (
+                            <span className="text-red-500 text-xs font-medium" title={`${diasSemFollow} dias sem follow-up`}>
+                              ⚠️
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <select 
+                          value={c.status} 
+                          onChange={e => atualizarStatus(c.id, e.target.value)} 
+                          className="text-xs px-2 py-1 rounded-full border bg-[var(--bg-tertiary)]"
+                        >
+                          {statusOptions.filter(s => s.value !== 'todos').map(s => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="p-3">
+                        {c.telefone ? (
+                          <a href={whatsappLink(c)} target="_blank" className="whatsapp-btn text-xs">
+                            <MessageCircle size={12} /> WPP
+                          </a>
+                        ) : '-'}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {/* Painel Lateral de Detalhes */}
+      {/* ============================================
+      PAINEL LATERAL DE DETALHES
+      ============================================ */}
       {showPainel && selectedContato && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/60" onClick={() => { 
@@ -1172,6 +1786,44 @@ export default function Contatos() {
                     {selectedContato.empresa}
                   </p>
                 )}
+                {selectedContato.instagram && (
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    <Instagram size={14} className="inline mr-2" />
+                    {selectedContato.instagram}
+                  </p>
+                )}
+                {selectedContato.faturamento && (
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    <DollarSign size={14} className="inline mr-2" />
+                    {selectedContato.faturamento}
+                  </p>
+                )}
+                {selectedContato.nicho && (
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    <Tag size={14} className="inline mr-2" />
+                    {selectedContato.nicho}
+                  </p>
+                )}
+                
+                {/* Follow-ups e Respostas */}
+                <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                  <p className="text-sm font-medium text-[var(--text-primary)]">Interações</p>
+                  <div className="flex gap-4 mt-1">
+                    <span className="text-xs text-[var(--text-secondary)]">
+                      📅 Follow-ups: {selectedContato.total_follow_ups || 0}
+                      {selectedContato.ultimo_follow_up && (
+                        <span className="ml-1">(último: {formatarDataHora(selectedContato.ultimo_follow_up)})</span>
+                      )}
+                    </span>
+                    <span className="text-xs text-[var(--text-secondary)]">
+                      ✅ Respostas: {selectedContato.total_respostas || 0}
+                      {selectedContato.ultima_resposta && (
+                        <span className="ml-1">(última: {formatarDataHora(selectedContato.ultima_resposta)})</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+
                 {camposPersonalizados.map((campo, i) => (
                   selectedContato.dados_extras?.[campo.nome] && (
                     <p key={i} className="text-sm text-[var(--text-secondary)]">
@@ -1179,6 +1831,37 @@ export default function Contatos() {
                     </p>
                   )
                 ))}
+              </div>
+
+              {/* Botões rápidos no painel */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => {
+                    setShowPainel(false)
+                    handleFollowUp(selectedContato)
+                  }}
+                  className="flex-1 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 text-sm flex items-center justify-center gap-2"
+                >
+                  <Calendar size={14} /> Follow-up
+                </button>
+                <button
+                  onClick={() => {
+                    setShowPainel(false)
+                    handleResposta(selectedContato)
+                  }}
+                  className="flex-1 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 text-sm flex items-center justify-center gap-2"
+                >
+                  <CheckCircle size={14} /> Resposta
+                </button>
+                {selectedContato.telefone && (
+                  <a
+                    href={whatsappLink(selectedContato)}
+                    target="_blank"
+                    className="py-2 px-4 rounded-lg bg-[#25D366] text-white hover:bg-[#1ea952] text-sm flex items-center gap-2"
+                  >
+                    <MessageCircle size={14} />
+                  </a>
+                )}
               </div>
 
               <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
@@ -1192,14 +1875,14 @@ export default function Contatos() {
               ) : atividades.length === 0 ? (
                 <p className="text-sm text-[var(--text-secondary)] text-center py-8">Nenhuma atividade registrada</p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-3 max-h-[400px] overflow-y-auto">
                   {atividades.map(a => (
                     <div key={a.id} className="flex gap-3 p-3 bg-[var(--bg-tertiary)] rounded-lg">
                       <div className="w-2 h-2 rounded-full bg-brand-500 mt-1.5 shrink-0" />
                       <div>
                         <p className="text-sm text-[var(--text-primary)]">{a.descricao}</p>
                         <p className="text-xs text-[var(--text-secondary)] mt-1">
-                          {new Date(a.criado_em).toLocaleString('pt-BR')}
+                          {formatarDataHora(a.criado_em)}
                         </p>
                       </div>
                     </div>
